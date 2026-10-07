@@ -1,8 +1,9 @@
 //@name LoreQA
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.1.0
+//@version 3.1.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
+// update test 3.1.1 — 자동 업데이트 동작 확인용 주석 (기능 변화 없음)
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
