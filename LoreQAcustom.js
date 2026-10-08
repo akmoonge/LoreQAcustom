@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.2
+//@version 3.2.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7777,6 +7777,8 @@ function scoutLedgerReconcile(ledger,messages){
     const removed=valid.length!==ledger.events.length;ledger.events=valid;
     if(common===ledger.hashes.length)return removed;
     // Editing/deletion/reroll invalidates changed and downstream extractions; unaffected earlier events survive.
+    // 어디서 되감겼는지 남긴다: 앞쪽 메시지가 계속 바뀌어 매번 처음부터 읽게 되는 경우를 진단 로그로 잡기 위해.
+    try{scoutLedgerLogAdd(ledger.scope,{time:new Date().toISOString(),status:`메시지 ${common}번이 저장 당시와 달라 그 뒤를 다시 읽음`,readBefore:ledger.hashes.length,rewoundTo:common,removedEvents:ledger.events.filter(e=>!e.evidence.every(v=>v.index<common)).length});scoutLedgerStatus.set(ledger.scope,`메시지 ${common}번이 바뀌어 그 뒤(${ledger.hashes.length-common}개)를 다시 읽습니다. 계속 반복되면 진단 로그를 확인하세요.`);}catch(_){}
     ledger.events=ledger.events.filter(e=>e.evidence.every(v=>v.index<common));
     ledger.hashes=ledger.hashes.slice(0,common);return true;
 }
@@ -8032,6 +8034,19 @@ async function scoutLedgerPanel(){
         const stop=document.createElement('button');stop.textContent='읽기 중지';stop.title='진행 중인 읽기를 멈춥니다. 다시 훑기 중이었다면 원래 읽은 지점으로 돌려 남은 부분을 다시 읽지 않습니다. 처음부터 다시 읽기는 멈춘 곳에서 다음 턴에 이어집니다.';stop.style.color='#f38ba8';
         stop.onclick=async()=>{stop.disabled=true;status.textContent='멈추는 중… (지금 요청 중인 묶음까지는 끝납니다)';try{const m=await scoutLedgerStop(scope);scoutLedgerStatus.set(scope,m||'읽기를 멈췄습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{stop.disabled=false;}};
         group('읽기',[all,redo,rescan,stop]);
+        // 수동 시작 위치: 이 번호 앞까지는 읽은 것으로 치고 이 번호부터 읽는다
+        const from=document.createElement('input');from.type='number';from.min='0';from.className='loreqa-input';from.style.cssText='width:90px';
+        const fromInfo=document.createElement('span');fromInfo.style.cssText='font-size:11px;color:#a6adc8';
+        (async()=>{try{const l=await scoutLedgerLoad(scope),n=scoutCompleted(snap).length;from.max=String(n);from.value=String(Math.min(l.hashes.length,n));fromInfo.textContent=`읽음 ${l.hashes.length} / 전체 ${n}개 메시지`;}catch(e){}})();
+        const go=document.createElement('button');go.textContent='이 번호부터 읽기';go.title='입력한 메시지 번호 앞까지는 읽은 것으로 치고, 그 번호부터 끝까지 읽습니다. 기록은 지우지 않습니다. 상태줄의 "인덱스" 숫자와 같은 번호입니다.';
+        go.onclick=async()=>{go.disabled=true;try{
+            const n=Math.max(0,parseInt(from.value)||0);
+            await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const msgs=scoutCompleted(fresh);const l=await scoutLedgerLoad(scope);const k=Math.min(n,msgs.length);l.hashes=msgs.slice(0,k).map(scoutMessageHash);delete l.rescanPrev;await scoutLedgerSave(l);});
+            scoutLedgerStatus.set(scope,`메시지 ${n}번부터 읽기 시작`);await scoutLedgerPanel();
+            await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();
+        }catch(e){status.textContent=String(e.message||e);}finally{go.disabled=false;}};
+        const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,fromInfo);
+        const fl=document.createElement('span');fl.textContent='시작 위치';fl.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';bar.append(fl,fromRow);
         group('정리',[tidy,undo]);
         group('기타',[imp,logBtn]);
         status.after(bar);
