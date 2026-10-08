@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.0
+//@version 3.2.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -6645,8 +6645,9 @@ Instructions:
     ledger: { label: '분기 판정 기준', ph: ['source'],
         locked: '뒤에 JSON 출력 형식, 원문 인용 규칙, 분류 이름, 개수 제한이 자동으로 붙음 (플러그인 검증용이라 잠김)',
         def: { en: () => `DIVERGENCE GATE (applies before every other rule): this ledger is given to a writer who knows the original work "{{source}}" well but has NOT read this story's older messages. Record what that writer would get wrong by assuming the original.
-Read every new assistant/char message. Record a change when BOTH are true:
+Read every new assistant/char message. Record a change when A, B and C are all true:
 A. A writer who assumes the original (plus the player's character settings) would get it wrong. Examples: a canon event ended differently or did not happen; something happened that the original never has; a canon character's situation differs (alive or dead, lasting injury, where they live or are held, custody, side or group, plot-critical item or ability); a canon character's stance or relationship differs; a canon character knows something they do not know in the original, including who the player's character is to them (kin, ward, child of someone they know, a secret they keep for her); the player's character's own standing changed in the story (her known name, registration, guardian, house, residence, group).
+C (applies to every record). It involves at least one character, group, place or event that EXISTS IN THE ORIGINAL. Relationships, deaths, fights and arrangements solely among characters who do not exist in the original (the player's character and NPCs invented in this story) are the story's own continuity, not a change to the original: do not record them, however dramatic. Record the player's character only in relation to something from the original (a canon character, a canon family or group, a canon place or institution).
 B. It is a CURRENT STATE that is still in effect now and that a later scene must respect, or (only as "core": false) a significant shared experience that changed how a canon character sees someone. Not a mere record that something happened. Test: if this record were missing, would the writer write a LATER scene wrong? "She rode in the carriage with Harry" or "they spent August together in Diagon Alley" fails: it is past history and no later scene depends on it. "Harry, Ron and Hermione now treat her as part of their close group" passes, as ONE record.
 The "dimension" must name that lasting state (e.g. "relationship with Stella Grey", "public reputation", "guardian", "house"), never a scene, trip or date (not "companionship during the carriage ride"). Many scenes showing the same state are ONE record; emit it again only when the state itself changes.
 Do NOT record:
@@ -6657,8 +6658,8 @@ Do NOT record:
 - The same fact again: if one change is shown in several ways (a revealed true name, the registration that follows, the map showing it), keep one record and update it.
 TWO TIERS. Every record is read by assistant models that research the original for this story; records with "core": true are ALSO given to the main writer every turn.
 - "core": true only for a state the main writer must never contradict in ANY scene: who someone is (true identity, name, lineage), who is alive or dead, custody, guardian, house, side or group, a relationship status (family, romance, enmity, alliance), a public reputation, and which canon characters know the player's character's identity or a central secret. Keep core short and few.
-- "core": false for everything else that passes A and B, including a significant shared experience that shapes how a canon character sees her (e.g. they rescued someone together; he saw her worst fear) and situational constraints. Routine travel, meals, shopping, lessons, being present and duplicates are still excluded.
-Record every change that passes A and B. An empty result is correct only after each new message was checked.
+- "core": false for everything else that passes A, B and C, including a significant shared experience that shapes how a canon character sees her (e.g. they rescued someone together; he saw her worst fear) and situational constraints. Routine travel, meals, shopping, lessons, being present and duplicates are still excluded.
+Record every change that passes A, B and C. An empty result is correct only after each new message was checked.
 Write each record in detail: "after" describes the current state fully (who, what exactly, how it came about, who is affected and how they now treat it), up to 500 chars, so a reader who never saw the scene understands it. When a later message adds to or changes a state already in the ledger, emit the SAME entity and dimension with an updated "after" that contains the whole current state (old details still true + new ones).
 "invalidates" names a SPECIFIC fact of the original that no longer holds because of this change (e.g. "Regulus Black died with no children; the Black line has no heir of his", "In the original Harry has no Hogsmeade companion that day"). Never write that the player's character does not exist or appear in the original, or that a canon character never met or learned about her: that is always true and says nothing. If no specific fact of the original is broken, use "".
 ONE NAME PER PERSON: keep using the entity name the ledger already uses for a person; put a new name or revealed identity in "after".
@@ -6672,6 +6673,7 @@ The records were written batch by batch while reading forward, so they contain d
 - DROP a record that a later record has overturned or replaced (e.g. a suspicion later confirmed or disproved, a quarrel later reconciled, a temporary arrangement that ended), or that only repeats what another record already fully contains, or that is a passing event no later scene depends on (a trip, an outing, a day's chaperone). Name the record that replaces it when there is one.
 - "recent_story_messages" shows where the story stands now. Use it ONLY to tell whether an older state (a quarrel, a resentment, a ban, a living arrangement) clearly no longer holds: if the recent messages plainly show the opposite (e.g. the two are close and affectionate again), rewrite that record to the current state or drop it. Never drop a record merely because the recent messages do not mention it.
 - Re-judge "core": true only for a state the main writer must never contradict in any scene: true identity, name or lineage; alive or dead; custody or guardian; house, side or group; a relationship status (family, romance, enmity, alliance); a public reputation; which canon characters know the player's character's identity or a central secret. Every record saying that a canon character knows her true lineage or identity is core, whoever it is. Everything else is false. Keep core short and few.
+- DROP a record that involves no character, group, place or event from the original, i.e. one solely about the player's character and characters invented in this story (their relationships, deaths, fights, arrangements).
 - Never invent facts. Use only what the records say. When unsure whether two records are the same, leave them separate.
 - Records marked "locked" were edited by the user: never merge or drop them, but you may drop other records that they replace.
 Write records in the same language as the existing records.` } },
@@ -7040,6 +7042,7 @@ Unit to use: ${med.rule}
 Several chapters or episodes can share one date; a date right after a multi-part event belongs to the part that covers that following day.
 Line 1: a short label in that unit followed by " - " and the chapter/episode title exactly as found in the sources (use the official ${lang} title if the sources give one), for example "${med.ex}". If this medium has no numbering, use the arc or story section name instead. Do not add any marks of uncertainty to this line.
 Line 2: "Index: " followed by the numbers of line 1 joined with dots, outermost first (for example "${med.idx}"), or "Index: -" if there are no numbers.
+PREQUEL / SEQUEL: if the story is set BEFORE the original's first chapter or episode (e.g. the parents' generation, years before the main story starts), Line 1 is a short description of that backstory period (e.g. "본편 이전 - 이누야샤 탄생 무렵" in the requested language) and Line 2 is exactly "Index: pre". Never map a prequel period onto a chapter merely because that backstory is told or shown there later (in a flashback or exposition): the chapter where a past is revealed is not the time it happened. Likewise use "Index: post" for a story set after the original's ending.
 Line 3: "Confidence: high" or "Confidence: guess".
 Line 4: "Source: " followed by the site or page you relied on.
 No other text.`;
@@ -7069,7 +7072,8 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         if (!label || /^unknown\.?$/i.test(label)) { await loreqa_posSave(snap.scope, st); return { status: 'unknown', raw, basis }; }
         // 저장 키는 모델이 따로 적은 번호(Index)를 우선한다. 위치 문장 표기가 매번 달라도 같은 위치로 묶이게.
         const clean = loreqa_posCleanLabel(label);
-        let key = idxNums && idxNums.length ? 'n:' + idxNums.join('.') : loreqa_posKey(clean);
+        const era = /^\s*pre\b/i.test(idxLine) ? 'pre' : /^\s*post\b/i.test(idxLine) ? 'post' : '';
+        let key = era ? era + ':' + loreqa_posKey(clean).replace(/^[a-z]+:/, '') : idxNums && idxNums.length ? 'n:' + idxNums.join('.') : loreqa_posKey(clean);
         // 같은 장·화인데 번호 표기만 흔들린 경우(3.22 / 22 등) 제목이 같은 기존 위치를 그대로 쓴다
         const titleOf = l => (String(l || '').split(/\s+[-–—]\s+/).slice(1).join(' - ') || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
         const myTitle = titleOf(clean);
@@ -7077,6 +7081,16 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
             const same = Object.entries(st.byPos).find(([, b]) => titleOf(b.label) === myTitle);
             if (same) key = same[0];
         }
+        // 뒤로 가기 막기: 이야기 시간은 보통 앞으로만 간다. 새 판정이 지금보다 앞이면 한 번은 보류하고,
+        //   다음 판정도 앞쪽으로 나오면 그때 받아들인다 (예전 판정이 너무 앞질렀던 경우를 바로잡을 수 있게).
+        //   '지금 판정'(force)이나 위치 카드에서 직접 정한 건 바로 반영.
+        const ord = k => { const m = String(k || ''); if (m.startsWith('pre:')) return [-1]; if (m.startsWith('post:')) return [1e9]; if (m.startsWith('n:')) return m.slice(2).split('.').map(Number); return null; };
+        const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] ?? 0, y = b[i] ?? 0; if (x !== y) return x < y ? -1 : 1; } return 0; };
+        const was = ord(st.cur?.key), now = ord(key);
+        if (!force && was && now && cmp(now, was) < 0) {
+            if (!st.backCand) { st.backCand = key; await loreqa_posSave(snap.scope, st); return { status: 'skip', basis, note: `새 판정(${clean})이 지금 위치보다 앞이라 한 번 보류함` }; }
+        }
+        delete st.backCand;
         // 같은 위치면 키·메모·가드는 그대로 두고 표시용 정보만 갱신
         st.cur = { key, label: st.cur?.key === key ? st.cur.label : clean, source: 'model', at: st.cur?.key === key ? st.cur.at : Date.now(), ref, guess };
         await loreqa_posSave(snap.scope, st);
