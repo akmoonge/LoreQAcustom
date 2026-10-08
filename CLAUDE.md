@@ -26,6 +26,12 @@ comments are Korean.
   The original 원작견 still uses `loreqa_*`; do not write there.
 - Divergence ledger: `canon_scout_major_v1:<scope>` (+ `_backup:` for tidy undo).
 - Position store: `canonpos_v1:<scope>` (`cur`, `byPos[key]` with guard/guide/qa, `backCand`).
+- Branch / copied chats get a new chat id, so `loreqa_inheritFromParent` (called once per scope from
+  `scoutSnapshot`, setting `inheritBranch`) copies ledger + position + fixed facts from the parent when
+  the new scope is empty. Parent = Risu's hidden `{{specialcomment::branchedfrom::<parentId>::…}}`
+  message, else a chat whose messages start with this whole chat. Ledger is trimmed by reconcile;
+  position gets `rejudge` (re-judged, backward move allowed) when the parent went past the fork.
+  `scoutText` returns '' for the marker but keeps its index.
 - `<scope>` = character id + chat id.
 
 ## Architecture (search these names)

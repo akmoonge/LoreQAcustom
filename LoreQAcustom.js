@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.3
+//@version 3.2.4
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -80,6 +80,7 @@ const LOREQA_DEFAULTS = {
     branchMainTier: 1,   // 메인 모델 주입: 0 끔 / 1 핵심만 / 2 전부. 보조 모델에는 항상 전부
     branchPdf: 0,        // 분기 추출 요청을 PDF로 전송
     ledgerTidyEvery: 8,  // 새 분기 기록 N건마다 장부 자동 정리 (0 = 끔)
+    inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
     ledgerEvery: 1,      // 분기 자동 읽기: 안 읽은 대화가 N턴 쌓이면 읽음 (1 = 매 턴)
     ledgerBatchTurns: 2, // 분기 읽기 한 묶음의 턴 수 (사용자+응답 = 1턴)
     ledgerBatchChars: 0, // 분기 읽기 한 묶음의 글자 수 상한 (0 = 없음, 턴 수로만)
@@ -7087,10 +7088,10 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         const ord = k => { const m = String(k || ''); if (m.startsWith('pre:')) return [-1]; if (m.startsWith('post:')) return [1e9]; if (m.startsWith('n:')) return m.slice(2).split('.').map(Number); return null; };
         const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] ?? 0, y = b[i] ?? 0; if (x !== y) return x < y ? -1 : 1; } return 0; };
         const was = ord(st.cur?.key), now = ord(key);
-        if (!force && was && now && cmp(now, was) < 0) {
+        if (!force && !st.rejudge && was && now && cmp(now, was) < 0) {
             if (!st.backCand) { st.backCand = key; await loreqa_posSave(snap.scope, st); return { status: 'skip', basis, note: `새 판정(${clean})이 지금 위치보다 앞이라 한 번 보류함` }; }
         }
-        delete st.backCand;
+        delete st.backCand; delete st.rejudge;
         // 같은 위치면 키·메모·가드는 그대로 두고 표시용 정보만 갱신
         st.cur = { key, label: st.cur?.key === key ? st.cur.label : clean, source: 'model', at: st.cur?.key === key ? st.cur.at : Date.now(), ref, guess };
         await loreqa_posSave(snap.scope, st);
@@ -7606,7 +7607,11 @@ function scoutClean(text) {
     return String(text || '').replace(/<!--\s*HAYAKU_STATE_PACKET_START[\s\S]*?HAYAKU_STATE_PACKET_END\s*-->/g, '')
       .replace(/┣\s*observation:[\s\S]*?┫/g, '').replace(/<!-- RISUPOT_[\s\S]*?-->/g, '');
 }
+// Risu 브랜치 기능이 갈라진 지점 바로 뒤에 넣는 숨김 표식: {{specialcomment::branchedfrom::<부모 채팅 id>::<부모 이름>::<분기 메시지 id>::}}
+const LOREQA_BRANCH_MARK = '{{specialcomment::branchedfrom::';
+const loreqa_isBranchMark = m => m?.disabled === true && typeof m.data === 'string' && m.data.trim().startsWith(LOREQA_BRANCH_MARK);
 function scoutText(msg) {
+    if (loreqa_isBranchMark(msg)) return ''; // 표식은 대화 내용이 아니다. 자리(번호)는 남겨 기존 기록의 번호가 밀리지 않게 한다
     const selected=Array.isArray(msg?.swipes)&&msg.swipes.length?msg.swipes[Number.isInteger(msg.swipeId)?msg.swipeId:msg.swipes.length-1]:null;
     const value = typeof selected==='string'?selected:(msg?.data ?? msg?.content ?? '');
     return typeof value === 'string' ? scoutClean(loreqa_sourceText(value)) : '';
@@ -7628,9 +7633,110 @@ async function scoutSnapshot() {
     const chats=char.chats||char.data?.chats||[], page=char.chatPage??char.data?.chatPage??0, chat=chats[page];
     const list=chat?.message||chat?.messages||[];
     const scope=String(char.chaId||char.id||char.name)+'/'+String(chat?.id||page);
+    await loreqa_inheritOnce(char,chats,chat,scope);
     const history=list.map((m,index)=>({index,role:m.role,text:scoutText(m)})).filter(m=>m.text.trim());
     const fingerprint=scoutHash(JSON.stringify({scope,history,source:loreqa_cfg.source,profile:loreqa_getProfile(),lore:loreqa_cfg.lore,search:loreqa_cfg.search,verifySearch:loreqa_cfg.verifySearch,verify:loreqa_getVerifyProfile(),facts:loreqa_cfg.scoutFactsByScope?.[scope]||'',lang:scoutLang()}));
     return {char,chat,list,scope,history,key:fingerprint};
+}
+// ── 브랜치 · 복사본 이어받기 ──
+// 채팅별 저장소 키에 채팅 id가 들어가서, 브랜치를 따거나 채팅을 복사하면 새 채팅은 빈 상태로 시작한다.
+// 새 채팅에 아무 기록이 없으면 원본 채팅을 찾아 분기 기록 · 전개 위치 · 고정 변경 기록을 한 번 복사한다.
+//   1) Risu 브랜치 표식이 있으면 그 부모 채팅  2) 없으면(채팅 복사) 이 채팅 전체가 앞부분과 똑같은 다른 채팅
+const loreqa_inheritDone = new Map(); // scope → Promise. 세션마다 채팅당 한 번만 확인
+function loreqa_inheritOnce(char, chats, chat, scope) {
+    if (Number(loreqa_cfg.inheritBranch ?? 1) !== 1 || !chat?.id || !(char.chaId || char.id)) return;
+    if (!loreqa_inheritDone.has(scope)) loreqa_inheritDone.set(scope, loreqa_inheritFromParent(char, chats, chat, scope).catch(e => { console.warn('[LoreQA] 원본 채팅 기록 이어받기 실패:', e?.message || e); }));
+    return loreqa_inheritDone.get(scope);
+}
+async function loreqa_inheritFromParent(char, chats, chat, scope) {
+    const base = loreqa_cfgBase || loreqa_cfg, ps = risuai.pluginStorage;
+    const factsOf = s => String(base.scoutFactsByScope?.[s] || '');
+    const hasData = async s => !!(factsOf(s).trim() || await ps.getItem(scoutLedgerKey(s)) || await ps.getItem(LOREQA_POS_KEY(s)));
+    if (await hasData(scope)) return;
+    const own = chat.message || chat.messages || [];
+    const keyOf = id => String(char.chaId || char.id) + '/' + String(id);
+    const listOf = c => c?.message || c?.messages || [];
+    let parent = '', fork = -1, parentLen = Infinity, how = '';
+    // 1) 브랜치 표식. 브랜치의 브랜치면 표식이 여럿이라 가장 뒤의 것이 직속 부모
+    for (let i = own.length - 1; i >= 0; i--) {
+        if (!loreqa_isBranchMark(own[i])) continue;
+        const body = own[i].data.trim().slice(LOREQA_BRANCH_MARK.length), cut = body.indexOf('::');
+        const pid = cut > 0 ? body.slice(0, cut).trim() : '';
+        if (pid && pid !== String(chat.id) && await hasData(keyOf(pid))) {
+            parent = keyOf(pid); fork = i; how = '브랜치';
+            const pc = chats.find(c => String(c?.id) === pid);
+            if (pc) parentLen = listOf(pc).length; // 부모 채팅이 지워졌으면 분기점 뒤로 진행했다고 본다
+        }
+        break;
+    }
+    // 2) 표식이 없으면: 이 채팅의 메시지가 전부 다른 채팅의 앞부분과 똑같을 때만 (첫 인사만 같은 새 채팅은 제외)
+    if (!parent) {
+        const sig = m => (m?.role || '') + '\u0000' + scoutText(m);
+        const mine = own.map(sig);
+        if (own.filter(m => scoutText(m).trim()).length < 2) return;
+        let best = null;
+        for (const c of chats) {
+            if (!c?.id || c === chat || String(c.id) === String(chat.id)) continue;
+            const list = listOf(c);
+            if (list.length < own.length || (best && list.length >= best.len)) continue;
+            if (!mine.every((s, i) => sig(list[i]) === s)) continue;
+            if (await hasData(keyOf(c.id))) best = { scope: keyOf(c.id), len: list.length };
+        }
+        if (!best) return;
+        parent = best.scope; fork = own.length; parentLen = best.len; how = '복사본';
+    }
+    // 원본이 갈라진 지점보다 더 진행했으면 원본의 현재 위치가 이 채팅보다 뒤일 수 있다
+    const forked = parentLen > fork;
+    const notes = [];
+    const rawL = await ps.getItem(scoutLedgerKey(parent));
+    if (rawL) {
+        const L = typeof rawL === 'string' ? JSON.parse(rawL) : JSON.parse(JSON.stringify(rawL));
+        if (L?.schema === 1 && Array.isArray(L.hashes) && Array.isArray(L.events) && Array.isArray(L.excluded)) {
+            L.scope = scope; L.revision = 0; delete L.rescanPrev;
+            L.inheritedFrom = { scope: parent, at: fork, how, time: new Date().toISOString() };
+            const before = L.events.length;
+            // 분기점 뒤에서 나온 기록과 읽은 위치는 여기서 잘린다 (이 채팅의 메시지와 해시가 다르므로)
+            scoutLedgerReconcile(L, scoutCompleted({ list: own }));
+            L.excluded = L.excluded.filter(id => L.events.some(e => e.id === id));
+            await ps.setItem(scoutLedgerKey(scope), JSON.stringify(L)); scoutCache = null;
+            notes.push(`분기 기록 ${L.events.length}개` + (before > L.events.length ? ` (분기점 뒤 ${before - L.events.length}개 제외)` : ''));
+        }
+    }
+    const rawP = await ps.getItem(LOREQA_POS_KEY(parent));
+    let rejudge = false;
+    if (rawP) {
+        const P = typeof rawP === 'string' ? JSON.parse(rawP) : JSON.parse(JSON.stringify(rawP));
+        if (P && typeof P === 'object') {
+            delete P.backCand;
+            // 직접 정한 위치는 그대로 두고, 판정된 위치는 다음 판정에서 뒤로 가는 것도 보류 없이 받는다
+            if (forked && P.cur && P.cur.source !== 'manual') { P.lastModelAt = -1e9; delete P.lastDate; P.rejudge = 1; rejudge = true; }
+            await ps.setItem(LOREQA_POS_KEY(scope), JSON.stringify(P));
+            notes.push('전개 위치' + (P.cur ? ` (${P.cur.label})` : '') + ' · 위치별 메모' + (rejudge ? ' — 분기점 이후 위치일 수 있어 다시 판정' : ''));
+        }
+    }
+    const f = factsOf(parent);
+    if (f.trim()) {
+        base.scoutFactsByScope = { ...(base.scoutFactsByScope || {}), [scope]: f };
+        if (loreqa_cfg !== base) loreqa_cfg.scoutFactsByScope = base.scoutFactsByScope;
+        await loreqa_saveConfig();
+        notes.push('고정 변경 기록');
+    }
+    if (!notes.length) return;
+    const msg = `${how}: 원본 채팅에서 ${notes.join(' · ')} 물려받음`;
+    scoutLedgerStatus.set(scope, msg);
+    if (rawP) loreqa_posMsg = msg;
+    scoutLedgerLogAdd(scope, { time: new Date().toISOString(), status: msg, from: parent, forkAt: fork, parentLength: Number.isFinite(parentLen) ? parentLen : null });
+    console.info('[LoreQA]', msg);
+    if (rejudge) setTimeout(async () => {
+        try {
+            if (!loreqa_flowOn('compPosition') || !(await loreqa_isActiveNow())) return;
+            const snap = await scoutSnapshot();
+            if (snap.scope !== scope) return;
+            const r = await loreqa_posModelFallback(snap);
+            if (r?.status === 'set') loreqa_posMsg = `✓ ${how} 위치 다시 판정 (${r.basis}): ${r.label}`;
+            loreqa_renderStatus(); loreqa_renderBoard();
+        } catch (e) { console.warn('[LoreQA] 이어받은 위치 다시 판정 실패:', e?.message || e); }
+    }, 3000);
 }
 // Source excerpts, never new facts. No external calls or writes.
 function continuityRecall(messages, query, lore = [], maxChars = 10000, primaryQuery = "") {
@@ -8688,6 +8794,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkNum(secSet,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
     loreqa_trkNum(secSet,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
     loreqa_trkNum(secSet,'장부 자동 정리','ledgerTidyEvery',8,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능)');
+    loreqa_trkToggle(secSet,'inheritBranch','브랜치 · 복사본 이어받기','Risu에서 브랜치를 따거나 채팅을 복사하면, 새 채팅에 기록이 없을 때 원본 채팅의 분기 기록(분기점 앞까지) · 전개 위치 · 위치별 메모 · 고정 변경 기록을 한 번 복사. 원본이 분기점보다 더 진행했으면 위치는 다시 판정');
     loreqa_trkToggle(secSet,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
     loreqa_trkToggle(secSet,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
     loreqa_trkApiRows(secSet,'branchApi','branchModel','분기 추출에 쓸 API.');
