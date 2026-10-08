@@ -1,9 +1,8 @@
-//@name LoreQA
+//@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.1.1
+//@version 3.2.0
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
-// update test 3.1.1 — 자동 업데이트 동작 확인용 주석 (기능 변화 없음)
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -172,12 +171,23 @@ const LOREQA_DEFAULTS = {
     },
 };
 
+// 저장 키: 원본 원작견(LoreQA)과 같은 저장소를 쓰므로 키 이름을 따로 둔다.
+//   처음 실행 때 새 키가 비어 있으면 예전 키(loreqa_*)의 값을 한 번 복사해 온다.
+async function loreqa_storeGet(name) {
+    const v = await risuai.pluginStorage.getItem('loreqacustom_' + name);
+    if (v != null) return v;
+    const old = await risuai.pluginStorage.getItem('loreqa_' + name);
+    if (old != null) { try { await risuai.pluginStorage.setItem('loreqacustom_' + name, old); } catch (e) {} }
+    return old;
+}
+const loreqa_storeSet = (name, value) => risuai.pluginStorage.setItem('loreqacustom_' + name, value);
+
 // 인메모리 설정 (startup 시 pluginStorage에서 로드)
 let loreqa_cfg = { ...LOREQA_DEFAULTS };
 
 async function loreqa_loadConfig() {
     try {
-        const saved = await risuai.pluginStorage.getItem('loreqa_config');
+        const saved = await loreqa_storeGet('config');
         if (saved) {
             const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
             loreqa_cfg = { ...LOREQA_DEFAULTS, ...parsed };
@@ -286,7 +296,7 @@ let loreqa_savedLores = []; // [{ id, text, createdAt, group }]
 
 async function loreqa_loadSavedLores() {
     try {
-        const saved = await risuai.pluginStorage.getItem('loreqa_saved_lores');
+        const saved = await loreqa_storeGet('saved_lores');
         if (saved) {
             loreqa_savedLores = typeof saved === 'string' ? JSON.parse(saved) : saved;
             if (!Array.isArray(loreqa_savedLores)) loreqa_savedLores = [];
@@ -304,7 +314,7 @@ async function loreqa_loadSavedLores() {
 }
 
 async function loreqa_saveSavedLores() {
-    await risuai.pluginStorage.setItem('loreqa_saved_lores', JSON.stringify(loreqa_savedLores));
+    await loreqa_storeSet('saved_lores', JSON.stringify(loreqa_savedLores));
 }
 
 // ── 프리셋 관리 (작품명 + 로어 파이프라인 설정) ──
@@ -424,7 +434,7 @@ let loreqa_presets = []; // [{ id, name, createdAt, data: {필드들} }]
 
 async function loreqa_loadPresets() {
     try {
-        const saved = await risuai.pluginStorage.getItem('loreqa_presets');
+        const saved = await loreqa_storeGet('presets');
         if (saved) {
             loreqa_presets = typeof saved === 'string' ? JSON.parse(saved) : saved;
             if (!Array.isArray(loreqa_presets)) loreqa_presets = [];
@@ -436,7 +446,7 @@ async function loreqa_loadPresets() {
 }
 
 async function loreqa_savePresets() {
-    await risuai.pluginStorage.setItem('loreqa_presets', JSON.stringify(loreqa_presets));
+    await loreqa_storeSet('presets', JSON.stringify(loreqa_presets));
 }
 
 function loreqa_collectPresetData() {
@@ -492,7 +502,7 @@ function loreqa_getVerifyProfile() {
 
 async function loreqa_saveConfig() {
     try {
-        await risuai.pluginStorage.setItem('loreqa_config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
+        await loreqa_storeSet('config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
     } catch (e) {
         console.warn('[LoreQA] 설정 저장 실패:', e);
     }
@@ -1133,7 +1143,7 @@ async function loreqa_openSettingsWindow() {
 
     groupSelect.addEventListener('change', async () => {
         loreqa_cfg.activeGroup = groupSelect.value;
-        await risuai.pluginStorage.setItem('loreqa_config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
+        await loreqa_storeSet('config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
     });
     groupRow.appendChild(groupSelect);
 
@@ -3512,7 +3522,7 @@ function loreqa_openGroupManager(onUpdate) {
                     if (idx >= 0) loreqa_cfg.knownGroups[idx] = trimmed;
                     if (!loreqa_cfg.knownGroups.includes(trimmed)) loreqa_cfg.knownGroups.push(trimmed);
                 }
-                await risuai.pluginStorage.setItem('loreqa_config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
+                await loreqa_storeSet('config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
                 renderGroups();
             });
             row.appendChild(renameBtn);
@@ -3545,7 +3555,7 @@ function loreqa_openGroupManager(onUpdate) {
                     loreqa_cfg.knownGroups = loreqa_cfg.knownGroups.filter(g => g !== name);
                 }
                 extraGroups.delete(name);
-                await risuai.pluginStorage.setItem('loreqa_config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
+                await loreqa_storeSet('config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
                 renderGroups();
             });
             row.appendChild(delBtn);
@@ -3576,7 +3586,7 @@ function loreqa_openGroupManager(onUpdate) {
         extraGroups.add(name);
         if (!Array.isArray(loreqa_cfg.knownGroups)) loreqa_cfg.knownGroups = ['Default'];
         if (!loreqa_cfg.knownGroups.includes(name)) loreqa_cfg.knownGroups.push(name);
-        await risuai.pluginStorage.setItem('loreqa_config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
+        await loreqa_storeSet('config', JSON.stringify(loreqa_cfgBase || loreqa_cfg));
         addInput.value = '';
         renderGroups();
     });
