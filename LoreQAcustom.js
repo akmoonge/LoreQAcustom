@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.5
+//@version 3.2.6
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -14,8 +14,11 @@ if (typeof risuai === "undefined") {
 
 const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
-    active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
+    active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
+    activePrev: 1,     // 머리의 '전체 ON/OFF'로 끄기 전 active 값 (다시 켤 때 복원)
     onlyCharName: '',  // active=3 ('현재 봇에서만') 에 바인딩된 캐릭터 이름
+    onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
+    onlyChatLabel: '', // 위 채팅의 표시용 이름
     source:   '',      // 작품명
     lore:     2,       // 0=사용안함, 1=1차만, 2=1차+2차검증, 3=MCP모드
     rewrite:  0,       // 0=끄기, 1=켜기
@@ -339,7 +342,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -784,6 +787,8 @@ function loreqa_injectStyles() {
         .loreqa-mode-chips { display: flex; gap: 4px; margin-left: 10px; }
         .loreqa-mode-chips button { background: transparent; color: #6c7086; border: 1px solid #45475a; border-radius: 999px; padding: 2px 12px; font-size: 12px; cursor: pointer; }
         .loreqa-mode-chips button.on { background: #89b4fa; color: #11111b; border-color: #89b4fa; font-weight: 600; }
+        .loreqa-mode-chips button.loreqa-power { margin-right: 6px; color: #f38ba8; border-color: #f38ba8; }
+        .loreqa-mode-chips button.loreqa-power.on { background: #a6e3a1; color: #11111b; border-color: #a6e3a1; }
         .loreqa-pane.loreqa-mode-off > * { opacity: 0.5; }
         .loreqa-pane.split-placeholder { }
         .loreqa-pane.loreqa-pane-split.active { display: flex; gap: 12px; align-items: flex-start; }
@@ -1213,13 +1218,18 @@ async function loreqa_openSettingsWindow() {
             { value: 0, label: '끄기' },
             { value: 1, label: '항상 켜기' },
             { value: 3, label: '현재 봇에서만' },
+            { value: 4, label: '현재 채팅에서만' },
         ], loreqa_cfg.active, v => {
             const n = parseInt(v);
             update('active', n);
+            if (loreqa_syncPower) loreqa_syncPower();
             const botOnly = n === 3;
             onlyCharInfoRow.style.display = botOnly ? 'flex' : 'none';
             // '현재 봇에서만' 선택 시 바인딩된 이름이 없으면 현재 캐릭터를 자동으로 가져옴
             if (botOnly && !(loreqa_cfg.onlyCharName || '').trim()) refreshOnlyCharName();
+            onlyChatInfoRow.style.display = n === 4 ? 'flex' : 'none';
+            // '현재 채팅에서만' 선택 시 지금 열린 채팅으로 지정
+            if (n === 4) refreshOnlyChat();
         }),
     ));
 
@@ -1249,6 +1259,36 @@ async function loreqa_openSettingsWindow() {
     onlyCharInfoRow.appendChild(onlyCharRefreshBtn);
 
     secBasic.appendChild(onlyCharInfoRow);
+
+    // '현재 채팅에서만'(active=4) — 지정한 채팅에서만 작동. 브랜치·복사본은 새 채팅이라 꺼진 채로 시작
+    async function refreshOnlyChat() {
+        try {
+            const ch = await risuai.getCharacter();
+            const scope = loreqa_chatScopeOf(ch);
+            if (!scope) { alert('현재 채팅을 찾을 수 없습니다. 채팅방을 연 상태에서 눌러주세요.'); return; }
+            const chats = ch.chats || ch.data?.chats || [], chat = chats[ch.chatPage ?? ch.data?.chatPage ?? 0];
+            const label = (((ch.name || ch.data?.name) || '').trim() + ' · ' + (String(chat?.name || '').trim() || '채팅')).slice(0, 120);
+            update('onlyChatScope', scope); update('onlyChatLabel', label);
+            onlyChatText.value = label;
+        } catch (e) {
+            alert('채팅 조회 실패: ' + (e && e.message ? e.message : e));
+        }
+    }
+    const onlyChatInfoRow = document.createElement('div');
+    onlyChatInfoRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
+    onlyChatInfoRow.style.display = (loreqa_cfg.active === 4) ? 'flex' : 'none';
+    const onlyChatText = document.createElement('input');
+    onlyChatText.className = 'loreqa-input-wide'; onlyChatText.type = 'text'; onlyChatText.readOnly = true;
+    onlyChatText.style.marginTop = '0'; onlyChatText.style.flex = '1'; onlyChatText.style.opacity = '0.8';
+    onlyChatText.placeholder = '(채팅 미지정 — 새로고침을 누르세요)';
+    onlyChatText.value = loreqa_cfg.onlyChatLabel || '';
+    const onlyChatRefreshBtn = document.createElement('button');
+    onlyChatRefreshBtn.type = 'button'; onlyChatRefreshBtn.className = 'loreqa-button';
+    onlyChatRefreshBtn.style.minWidth = 'auto'; onlyChatRefreshBtn.style.flexShrink = '0';
+    onlyChatRefreshBtn.textContent = '🔄'; onlyChatRefreshBtn.title = '지금 열린 채팅으로 지정 (브랜치로 옮겨 갈 때 그 채팅에서 누르기)';
+    onlyChatRefreshBtn.addEventListener('click', refreshOnlyChat);
+    onlyChatInfoRow.append(onlyChatText, onlyChatRefreshBtn);
+    secBasic.appendChild(onlyChatInfoRow);
 
     // 작품명
     const sourceInput = document.createElement('input');
@@ -2817,12 +2857,25 @@ function loreqa_promptSection(keys) {
     return sec;
 }
 
+let loreqa_syncPower = null; // 기본 탭에서 활성화를 바꾸면 머리의 전체 ON/OFF 표시도 맞춘다
 function loreqa_buildTabs(p) {
     p.title.textContent = '원작견';
     // ── 머리: 세 모드 단추 ──
     const chips = document.createElement('div'); chips.className = 'loreqa-mode-chips';
     const panes = {};
-    const syncDim = () => { for (const [key, , tab] of LOREQA_MODE_CHIPS) panes[tab]?.pane.classList.toggle('loreqa-mode-off', Number(loreqa_cfg[key]) === 0); };
+    // 전체 켜기/끄기: 기본 탭의 '활성화'(active)를 바꾼다. 다시 켜면 끄기 전 값(항상 / 현재 봇에서만)으로
+    const power = document.createElement('button'); power.type = 'button'; power.className = 'loreqa-power';
+    const syncPower = () => { const on = Number(loreqa_cfg.active) !== 0; power.textContent = on ? '전체 ON' : '전체 OFF'; power.classList.toggle('on', on); power.title = on ? '눌러서 플러그인 전체 끄기' : '눌러서 다시 켜기'; };
+    power.addEventListener('click', async () => {
+        const base = loreqa_cfgBase || loreqa_cfg;
+        if (Number(base.active) !== 0) { base.activePrev = base.active; base.active = 0; }
+        else base.active = [1, 3, 4].includes(Number(base.activePrev)) ? Number(base.activePrev) : 1;
+        if (loreqa_cfg !== base) loreqa_cfg.active = base.active;
+        const sel = document.getElementById('loreqa-s-active'); if (sel) sel.value = String(base.active);
+        await loreqa_saveConfig(); syncPower(); loreqa_updateStatusBar();
+    });
+    syncPower(); loreqa_syncPower = syncPower; chips.appendChild(power);
+    const syncDim =() => { for (const [key, , tab] of LOREQA_MODE_CHIPS) panes[tab]?.pane.classList.toggle('loreqa-mode-off', Number(loreqa_cfg[key]) === 0); };
     for (const [key, label, tab] of LOREQA_MODE_CHIPS) {
         const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
         b.classList.toggle('on', Number(loreqa_cfg[key]) === 1);
@@ -3185,7 +3238,7 @@ function loreqa_updateStatusBar() {
     const bar = document.getElementById('loreqa-status-bar');
     if (!bar) return;
     const c = loreqa_cfg;
-    const activeLabel = c.active === 3 ? '현재 봇' : (c.active === 1 ? 'ON' : 'OFF');
+    const activeLabel = c.active === 4 ? '현재 채팅' : c.active === 3 ? '현재 봇' : (c.active === 1 ? 'ON' : 'OFF');
     const loreLabel = ['없음', '1차만', '1차+2차'][c.lore] || '없음';
     let text = `${c.source || '(작품 미설정)'} | 활성: ${activeLabel} | 로어: ${loreLabel} | 검색: 1차${c.search ? '✓' : '✗'} 2차${c.verifySearch ? '✓' : '✗'}`;
 
@@ -7181,14 +7234,19 @@ function loreqa_afterTurnBackground() {
         loreqa_renderBoard();
     }, 3000); // 응답이 채팅에 저장될 시간만 둔다
 }
-async function loreqa_isActiveNow() {
-    const cfg = loreqa_cfg;
+// 지금 열린 채팅의 식별자 (캐릭터 id/채팅 id). 브랜치·복사본은 채팅 id가 새로 생긴다
+function loreqa_chatScopeOf(ch) {
+    const chats = ch?.chats || ch?.data?.chats || [], chat = chats[ch?.chatPage ?? ch?.data?.chatPage ?? 0], cid = ch?.chaId || ch?.id;
+    return cid && chat?.id ? String(cid) + '/' + String(chat.id) : '';
+}
+async function loreqa_isActiveNow(cfg = loreqa_cfg) {
     if (cfg.active === 1) return true;
-    if (cfg.active !== 3) return false;
-    const bound = (cfg.onlyCharName || '').trim();
-    if (!bound) return false;
-    try { const ch = await risuai.getCharacter(); return ((ch && (ch.name || ch.data?.name)) || '').trim() === bound; }
-    catch (e) { return false; }
+    if (cfg.active !== 3 && cfg.active !== 4) return false;
+    let ch = null;
+    try { ch = await risuai.getCharacter(); } catch (e) { return false; }
+    if (cfg.active === 3) { const bound = (cfg.onlyCharName || '').trim(); return !!bound && ((ch && (ch.name || ch.data?.name)) || '').trim() === bound; }
+    const bound = String(cfg.onlyChatScope || '');
+    return !!bound && loreqa_chatScopeOf(ch) === bound;
 }
 
 // ── 위치별 Q&A 저장소 (반복 방지 + 메모리) ──
@@ -8237,7 +8295,7 @@ async function scoutMainRequest(messages,type){
     if(loreqa_cfg.active===0||loreqa_cfg.lore===0)return messages;
     try{
       const snap=await scoutSnapshot();
-      if(loreqa_cfg.active===3&&String(snap.char.name||'').trim()!==String(loreqa_cfg.onlyCharName||'').trim())return messages;
+      if(!(await loreqa_isActiveNow()))return messages;
       const last=[...snap.list].reverse().find(m=>m.role==='user');
       const input=scoutText(last).replace(/\s+/g,' ').trim();
       if(!input)return messages;
@@ -8281,21 +8339,10 @@ async function loreqa_mainRequest(messages, type) {
     //                      이름 미지정이거나 캐릭터 조회 실패 시에도 안전하게 스킵.
     //   (2 = 구버전 '원작' 키워드 모드 — 삭제됨. 로드 시 1로 마이그레이션)
     //  비활성인 경우 메시지를 손대지 않고 그대로 반환.
-    let isActive = false;
-    if (cfg.active === 1) {
-        isActive = true;
-    } else if (cfg.active === 3) {
-        const boundName = (cfg.onlyCharName || '').trim();
-        let curName = '';
-        try {
-            const ch = await risuai.getCharacter();
-            curName = ((ch && (ch.name || (ch.data && ch.data.name))) || '').trim();
-        } catch (e) {}
-        isActive = !!boundName && curName === boundName;
-        if (!isActive) {
-            console.log(`[LoreQA] '현재 봇에서만' — 캐릭터 불일치 (바인딩: "${boundName || '(미지정)'}", 현재: "${curName || '(불명)'}"). 스킵.`);
-        }
-    }
+    //   4 = 현재 채팅에서만 : 바인딩된 채팅(onlyChatScope)일 때만. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작.
+    const isActive = await loreqa_isActiveNow(cfg);
+    if (!isActive && cfg.active === 3) console.log(`[LoreQA] '현재 봇에서만' — 캐릭터 불일치 (바인딩: "${(cfg.onlyCharName || '').trim() || '(미지정)'}"). 스킵.`);
+    if (!isActive && cfg.active === 4) console.log(`[LoreQA] '현재 채팅에서만' — 다른 채팅 (바인딩: "${cfg.onlyChatLabel || cfg.onlyChatScope || '(미지정)'}"). 스킵.`);
     if (!isActive) return messages;
 
     // 활성화된 경우에만 사용하는 마무리 헬퍼 (이전 lore_qa 블록 정리 + 저장 로어 주입)
