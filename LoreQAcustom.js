@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.4
+//@version 3.2.5
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -80,6 +80,20 @@ const LOREQA_DEFAULTS = {
     branchMainTier: 1,   // 메인 모델 주입: 0 끔 / 1 핵심만 / 2 전부. 보조 모델에는 항상 전부
     branchPdf: 0,        // 분기 추출 요청을 PDF로 전송
     ledgerTidyEvery: 8,  // 새 분기 기록 N건마다 장부 자동 정리 (0 = 끔)
+    // 길이 · 개수 상한 (0 = 제한 없음)
+    qaMemoQChars: 300,   // 위치별 원작 메모: 질문 저장 글자 수
+    qaMemoAChars: 240,   // 위치별 원작 메모: 답 저장 글자 수 (반복 방지용 요지)
+    qaKeep: 12,          // 위치별 원작 메모: 위치당 보관 개수
+    qaRecent: 8,         // 위치별 원작 메모: 1차 질의에 '이미 다룬 질문'으로 넣는 개수
+    guardChars: 6000,    // 시점 가드 결과 글자 수
+    guideChars: 6000,    // 서사 가이드 결과 글자 수
+    fixedChars: 3000,    // 고정 변경 기록 주입 글자 수
+    divMainChars: 6000,  // 메인 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
+    divHelperChars: 12000, // 보조 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
+    helperDivMax: 60,    // 보조 모델(Q&A · 가드 · 가이드)에 넘기는 분기 기록 수
+    attachChars: 4000,   // 페르소나 · 작가의 노트 첨부 글자 수
+    briefLoreN: 8,       // 원작 브리핑에 넣는 로어 개수
+    briefLoreChars: 1800, // 원작 브리핑 로어 항목당 글자 수
     inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
     ledgerEvery: 1,      // 분기 자동 읽기: 안 읽은 대화가 N턴 쌓이면 읽음 (1 = 매 턴)
     ledgerBatchTurns: 2, // 분기 읽기 한 묶음의 턴 수 (사용자+응답 = 1턴)
@@ -6836,7 +6850,10 @@ function loreqa_mcpContext(source, mcpText) {
 //   canonpos_v1:<scope> = { cur:{key,label,source,at}, lastSignal, lastModelAt, byPos:{ [key]:{label,secrets,qa:[]} } }
 //   위치를 모르면 버킷 '_' 에 Q&A 를 쌓는다.
 const LOREQA_POS_KEY = scope => 'canonpos_v1:' + scope;
-const LOREQA_QA_KEEP = 12;
+// 길이 · 개수 상한. 0(또는 빈칸)이면 제한 없음
+function loreqa_lim(key) { const n = Number(loreqa_cfg[key] ?? LOREQA_DEFAULTS[key]); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; }
+const loreqa_capStr = (v, key) => { const t = String(v ?? ''), n = loreqa_lim(key); return n ? t.slice(0, n) : t; };
+const loreqa_capTail = (arr, key) => { const n = loreqa_lim(key); return n ? arr.slice(-n) : arr; };
 const LOREQA_GUARD_V = 2; // 2 = 지금 존재하는 비밀만 (미래 사건 제외)
 let loreqa_turnCtx = null;        // 이번 요청에서 조립한 맥락 (원작견 1차/2차와 메인 주입이 공유)
 let loreqa_lastInjection = null;  // 위치 · 기록 창 표시용: 마지막으로 메인에 넣은 블록
@@ -6867,7 +6884,7 @@ async function loreqa_posLoad(scope) {
                 const m = merged[nk];
                 if (!m) { merged[nk] = { ...b, label: loreqa_posCleanLabel(b.label || k), qa: [...(b.qa || [])] }; continue; }
                 for (const e of b.qa || []) if (!m.qa.some(x => x.marker === e.marker)) m.qa.push(e);
-                m.qa = m.qa.slice(-LOREQA_QA_KEEP);
+                m.qa = loreqa_capTail(m.qa, 'qaKeep');
                 if (b.secrets && (b.guardV === LOREQA_GUARD_V) && m.guardV !== LOREQA_GUARD_V) { m.secrets = b.secrets; m.guardV = b.guardV; }
             }
             st.byPos = merged;
@@ -6927,12 +6944,12 @@ function loreqa_trueDivergences(projection) {
 async function loreqa_generateGuard(label, divergences) {
     const lang = scoutLang();
     const system = loreqa_prompt('guard', { source: loreqa_cfg.source, position: label, language: lang }, false) + await loreqa_flowOcRule();
-    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: (divergences || []).slice(-60).map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
+    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
         const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
         const text = String(typeof out === 'string' ? out : (out?.text ?? out?.content ?? '')).trim();
-        return text.slice(0, 6000);
+        return loreqa_capStr(text, 'guardChars');
     } catch (e) {
         console.warn('[LoreQA] 시점 가드 생성 실패:', e?.message || e);
         return '';
@@ -6943,8 +6960,8 @@ async function loreqa_ctxExtras(prefix) {
     const ex = {};
     const c = loreqa_cfg;
     if (Number(c[prefix + 'Persona']) === 1 || Number(c[prefix + 'Original']) === 1) ex.player_character = await loreqa_getPersonaName();
-    if (Number(c[prefix + 'Persona']) === 1) ex.player_persona = String(await loreqa_getPersonaDescription() || '').slice(0, 4000);
-    if (Number(c[prefix + 'AuthorNote']) === 1) ex.author_note = String(await loreqa_getAuthorNote() || '').slice(0, 4000);
+    if (Number(c[prefix + 'Persona']) === 1) ex.player_persona = loreqa_capStr(await loreqa_getPersonaDescription() || '', 'attachChars');
+    if (Number(c[prefix + 'AuthorNote']) === 1) ex.author_note = loreqa_capStr(await loreqa_getAuthorNote() || '', 'attachChars');
     if (ex.player_persona || ex.author_note) ex.setup_note = 'player_persona and author_note are the roleplay setup: use them to recognise the player character and premises the roleplay starts from. They are context, not events.';
     return ex;
 }
@@ -6955,11 +6972,11 @@ const LOREQA_GUIDE_V = 1;
 async function loreqa_generateGuide(label, divergences) {
     const lang = scoutLang(), n = Math.max(1, Math.min(10, Number(loreqa_cfg.guideCount) || 3)), med = loreqa_mediumRule();
     const system = loreqa_prompt('guide', { source: loreqa_cfg.source, position: label, count: n, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
-    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: (divergences || []).slice(-60).map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
+    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
         const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
-        return String(typeof out === 'string' ? out : (out?.text ?? '')).trim().slice(0, 6000);
+        return loreqa_capStr(String(typeof out === 'string' ? out : (out?.text ?? '')).trim(), 'guideChars');
     } catch (e) { console.warn('[LoreQA] 서사 가이드 생성 실패:', e?.message || e); return ''; }
 }
 
@@ -6970,8 +6987,8 @@ async function loreqa_prepareTurn() {
     try { snap = await scoutSnapshot(); t.scope = snap.scope; } catch (e) { return t; }
     const cfg = loreqa_cfg;
     if (loreqa_branchOn('compLedger')) {
-        t.fixed = String(cfg.scoutFactsByScope?.[t.scope] || '').trim().slice(0, 3000);
-        try { t.divergences = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))).slice(-60); }
+        t.fixed = loreqa_capStr(String(cfg.scoutFactsByScope?.[t.scope] || '').trim(), 'fixedChars');
+        try { t.divergences = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))); t.divergences = loreqa_capTail(t.divergences, 'helperDivMax'); }
         catch (e) { console.warn('[LoreQA] 분기 기록 읽기 실패:', e?.message || e); }
     }
     if (!loreqa_flowOn('compPosition')) { loreqa_stageSet({ pos: '끔', guard: '끔' }); return t; }
@@ -7182,8 +7199,8 @@ async function loreqa_recentQASave(scope, marker, q, a) {
     const bucket = loreqa_posBucket(st, key, loreqa_turnCtx?.pos?.label || '(위치 미정)');
     const mk = loreqa_activeMode ? `${marker}:${loreqa_activeMode}` : String(marker);
     bucket.qa = (bucket.qa || []).filter(e => e.marker !== mk);
-    bucket.qa.push({ marker: mk, q: String(q).slice(0, 300), a: String(a).slice(0, 240) });
-    bucket.qa = bucket.qa.slice(-LOREQA_QA_KEEP);
+    bucket.qa.push({ marker: mk, q: loreqa_capStr(q, 'qaMemoQChars'), a: loreqa_capStr(a, 'qaMemoAChars') });
+    bucket.qa = loreqa_capTail(bucket.qa, 'qaKeep');
     await loreqa_posSave(scope, st);
 }
 // 1차/2차 프롬프트에 붙일 맥락. loreqa_prepareTurn 결과를 그대로 쓰고, 이 위치에서 이미 다룬 Q&A 를 더한다.
@@ -7194,18 +7211,24 @@ async function loreqa_firstPassContext(marker) {
     const st = await loreqa_posLoad(ctx.scope);
     // 같은 모드가 다룬 질문만 반복 방지 대상으로 (같은 턴의 리롤은 제외)
     const mine = e => !loreqa_activeMode || !String(e.marker).includes(':') || String(e.marker).endsWith(':' + loreqa_activeMode);
-    ctx.recent = (st.byPos[t.bucket || '_']?.qa || []).filter(e => String(e.marker).split(':')[0] !== String(marker) && mine(e)).slice(-8);
+    ctx.recent = (st.byPos[t.bucket || '_']?.qa || []).filter(e => String(e.marker).split(':')[0] !== String(marker) && mine(e));
+    ctx.recent = loreqa_capTail(ctx.recent, 'qaRecent');
     return ctx;
 }
-function loreqa_formatDivergences(ctx, ko, budget = 12000) {
+function loreqa_formatDivergences(ctx, ko, limKey = 'divHelperChars') {
     if (!ctx.divergences.length && !ctx.fixed) return '';
+    let budget = loreqa_lim(limKey) || Infinity;
     let out = ko ? '\n\n# 이 이야기에서 확정된 변경 (원작보다 우선)\n' : '\n\n# Confirmed Changes in This Story (override canon)\n';
-    for (const e of ctx.divergences) {
+    // 넘치면 오래된 기록부터 뺀다: 최신 기록부터 채우고, 넣을 때는 원래 순서로
+    const lines = [];
+    for (let i = ctx.divergences.length - 1; i >= 0; i--) {
+        const e = ctx.divergences[i];
         const line = `- ${e.entity} · ${e.dimension}: ${e.after}` + (e.change ? ` (${e.change})` : '') +
             (e.invalidates ? (ko ? ` / 무효가 된 원작 전제: ${e.invalidates}` : ` / invalidated canon assumption: ${e.invalidates}`) : '') + '\n';
         if (line.length > budget) break;
-        out += line; budget -= line.length;
+        lines.unshift(line); budget -= line.length;
     }
+    out += lines.join('');
     if (!ctx.divergences.length) out += ko ? '- (자동 기록 없음)\n' : '- (no automatic records)\n';
     if (ctx.fixed) out += (ko ? '\n# 사용자 고정 변경 기록 (자동 기록과 충돌하면 이쪽 우선)\n' : '\n# User Fixed Records (override automatic records on conflict)\n') + ctx.fixed + '\n';
     return out;
@@ -7784,8 +7807,8 @@ function scoutOpt(name){return name==='original'?Number(loreqa_cfg.branchOrigina
 async function scoutExtras(){
     const ex={original:scoutOpt('original'),doubt:scoutOpt('doubt'),personaName:'',persona:'',authorNote:''};
     if(ex.original||scoutOpt('persona'))ex.personaName=await loreqa_getPersonaName();
-    if(scoutOpt('persona'))ex.persona=String(await loreqa_getPersonaDescription()||'').slice(0,4000);
-    if(scoutOpt('authorNote'))ex.authorNote=String(await loreqa_getAuthorNote()||'').slice(0,4000);
+    if(scoutOpt('persona'))ex.persona=loreqa_capStr(await loreqa_getPersonaDescription()||'','attachChars');
+    if(scoutOpt('authorNote'))ex.authorNote=loreqa_capStr(await loreqa_getAuthorNote()||'','attachChars');
     return ex;
 }
 function scoutOcRule(name){
@@ -7805,7 +7828,7 @@ function scoutEvidence(snapshot,ledger=null,extras=null) {
     let budget=30000;
     const bounded=[];
     for(const m of [...selected].reverse()) { if(budget<300)break;const text=m.text.slice(0,Math.min(7000,budget));bounded.push({...m,text,partial:text.length<m.text.length});budget-=text.length; }
-    const cardLore=matched.slice(0,8).map(e=>({title:e.comment||e.key,content:e.content.slice(0,1800)}));
+    const loreN=loreqa_lim('briefLoreN');const cardLore=(loreN?matched.slice(0,loreN):matched).map(e=>({title:e.comment||e.key,content:loreqa_capStr(e.content,'briefLoreChars')}));
     return {scope:snapshot.scope,work:loreqa_cfg.source,major_divergences:ledger?scoutLedgerProjection(ledger):[],ledger_status:scoutLedgerStatus.get(snapshot.scope)||"",ledger_policy:SCOUT_LEDGER_POLICY,calendar_note:'Card-defined dates are adopted chronology unless independently verified by official sources.',card_description:String(snapshot.char.desc||snapshot.char.description||snapshot.char.data?.description||'').slice(0,7000),relevant_card_lore:cardLore,raw_CBS_warning:'Unresolved {{...}} branches are alternatives, not simultaneous facts. Do not infer the active branch.',user_reference:String(loreqa_cfg.scoutFactsByScope?.[snapshot.scope]||'').slice(0,6000),history:bounded.reverse(),continuity_source_excerpts:scoutRecall(snapshot),history_is_partial:bounded.length<snapshot.history.length,...(extras?.personaName?{player_character_name:extras.personaName}:{}),...(extras?.persona?{player_persona:extras.persona}:{}),...(extras?.authorNote?{author_note:extras.authorNote}:{}),saved_reference:(loreqa_savedLores||[]).filter(x=>x.group===(loreqa_cfg.activeGroup||'Default')).slice(0,6).map(x=>String(x.text||'').slice(0,1800))};
 }
 function scoutShow(text) {
@@ -8657,7 +8680,7 @@ function loreqa_injectUnified(messages, t) {
     const mainTier = Number(loreqa_cfg.branchMainTier ?? 1);
     const mainDiv = mainTier === 2 ? t.divergences : mainTier === 1 ? t.divergences.filter(e => e.core) : [];
     if (mainTier !== 0 && (mainDiv.length || t.fixed)) {
-        const c = LOREQA_DIV_BLOCK + '\n' + loreqa_prompt('injDiv', {}, ko) + loreqa_formatDivergences({ ...t, divergences: mainDiv }, ko, 6000);
+        const c = LOREQA_DIV_BLOCK + '\n' + loreqa_prompt('injDiv', {}, ko) + loreqa_formatDivergences({ ...t, divergences: mainDiv }, ko, 'divMainChars');
         loreqa_insertSystemSafely(messages, c, '분기 주입');
         inj.div = c;
     }
@@ -8794,6 +8817,10 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkNum(secSet,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
     loreqa_trkNum(secSet,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
     loreqa_trkNum(secSet,'장부 자동 정리','ledgerTidyEvery',8,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능)');
+    loreqa_trkNum(secSet,'고정 변경 기록 글자 수','fixedChars',3000,0,'고정 변경 기록을 이만큼까지 주입. 넘는 뒷부분은 안 들어감. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'메인 분기 블록 글자 수','divMainChars',6000,0,'메인 본문 요청에 넣는 분기 기록 목록 길이 (고정 변경 기록은 따로). 넘는 기록은 빠짐. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'보조 분기 블록 글자 수','divHelperChars',12000,0,'인물·세계관 Q&A에 넣는 분기 기록 목록 길이. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'보조 모델 분기 기록 수','helperDivMax',60,0,'인물·세계관 Q&A, 시점 가드·서사 가이드에 넘기는 최신 분기 상태 수. 0이면 전부');
     loreqa_trkToggle(secSet,'inheritBranch','브랜치 · 복사본 이어받기','Risu에서 브랜치를 따거나 채팅을 복사하면, 새 채팅에 기록이 없을 때 원본 채팅의 분기 기록(분기점 앞까지) · 전개 위치 · 위치별 메모 · 고정 변경 기록을 한 번 복사. 원본이 분기점보다 더 진행했으면 위치는 다시 판정');
     loreqa_trkToggle(secSet,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
     loreqa_trkToggle(secSet,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
@@ -8823,6 +8850,12 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secSet,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
     loreqa_trkNum(secSet,'판정 참조 메시지','posReadMsgs',6,1,'위치 판정 때 읽을 최근 메시지 수 (유저·봇 각각 1개)');
     loreqa_trkNum(secSet,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
+    loreqa_trkNum(secSet,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
     loreqa_trkToggle(secSet,'flowSearch','웹 검색','위치 판정·시점 가드·서사 가이드에 웹 검색 사용. 끄면 모델 기억으로 추정');
     loreqa_trkToggle(secSet,'flowPdf','PDF 전송','위치 판정·시점 가드·서사 가이드를 PDF로 전송. PDF 입력 지원 모델만');
     const charSec=scoutSection('캐릭터 & 보정 (전개)');
@@ -8830,6 +8863,7 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkToggle(charSec,'flowDoubt','검증 의심 지침','위치·가드·가이드 블록에 "틀릴 수 있음" 경고');
     loreqa_trkToggle(charSec,'flowPersona','페르소나 포함','위치 판정·가드·가이드에 페르소나 첨부');
     loreqa_trkToggle(charSec,'flowAuthorNote','작가의 노트 주입','위치 판정·가드·가이드에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)');
+    loreqa_trkNum(charSec,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
     loreqa_trkApiRows(secSet,'flowApi','flowModel','위치 판정·시점 가드·서사 가이드에 쓸 API.');
     right.appendChild(secSet);
     right.appendChild(charSec);
@@ -8839,6 +8873,8 @@ function loreqa_buildFlowContent(left,right){
     const briefBtn=document.createElement('button');briefBtn.textContent='브리핑 생성';
     briefBtn.onclick=async()=>{briefBtn.disabled=true;try{await scoutRun(true);}finally{briefBtn.disabled=false;}};
     briefBtns.appendChild(briefBtn);
+    loreqa_trkNum(briefSec,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
+    loreqa_trkNum(briefSec,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
     briefSec.append(briefBtns,pre);right.appendChild(briefSec);
 }

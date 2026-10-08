@@ -37,6 +37,8 @@ comments are Korean.
 ## Architecture (search these names)
 
 - `LOREQA_DEFAULTS` — every setting and its default. New settings go here.
+  Length / count caps are settings too (0 = no limit): read them with `loreqa_lim(key)`,
+  `loreqa_capStr(text, key)`, `loreqa_capTail(list, key)` instead of hard-coding a number.
 - `beforeRequest` → `loreqa_unifiedRequest` → `loreqa_prepareTurn` (ledger read,
   position, guard, guide) → per-mode Q&A `loreqa_runModeQA(mode, …)` (swaps
   `loreqa_cfg` with `modeCfg[mode]` and the mode's API) → `loreqa_injectUnified`.
