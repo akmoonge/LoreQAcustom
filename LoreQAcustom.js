@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.1
+//@version 3.2.2
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7109,6 +7109,7 @@ async function loreqa_ledgerCatchupRun() {
         try {
             for (let round = 0; round < 500; round++) {
                 if (!loreqa_branchOn('compLedger') || !(await loreqa_isActiveNow())) return 'stop';
+                try { if (scoutLedgerAbort.has(scoutLedgerScope(await scoutSnapshot()))) return 'stop'; } catch (e) {}
                 let sn; try { sn = await scoutSnapshot(); } catch (e) { return 'stop'; }
                 const scope = scoutLedgerScope(sn);
                 if (scope0 === null) scope0 = scope; else if (scope !== scope0) return 'stop';
@@ -7835,6 +7836,7 @@ function scoutLedgerSplitEnd(messages,start,end) {
 }
 // ── 분기 장부 정리: 중복 합치기 · 낡은 기록 지우기 · ★ 재판정. 결과에 안 나온 기록은 그대로 둔다. ──
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
+const scoutLedgerAbort=new Set(); // 읽기 중지 요청
 const SCOUT_TIDY_LOCKED=`Each record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
@@ -7915,6 +7917,21 @@ async function scoutLedgerTidy(scope,reason='manual'){
         return r;
     });
 }
+// 읽기 중지: 진행 중인 읽기를 멈춘다. '기록 두고 다시 훑기' 중이었다면 원래 읽은 지점까지 되돌려 다시 읽지 않게 한다.
+async function scoutLedgerStop(scope){
+    scoutLedgerAbort.add(scope);
+    try{
+        return await scoutLedgerSerial(async()=>{
+            const snap=await scoutSnapshot();if(snap.scope!==scope)return '';
+            const l=await scoutLedgerLoad(scope);let msg='읽기를 멈췄습니다 ('+l.hashes.length+'개 메시지까지 읽음).';
+            if(Array.isArray(l.rescanPrev)){
+                if(l.rescanPrev.length>l.hashes.length){l.hashes=l.rescanPrev;scoutLedgerReconcile(l,scoutCompleted(snap));msg='다시 훑기를 멈추고 원래 읽은 지점('+l.hashes.length+'개 메시지)으로 돌렸습니다. 그사이 찾은 기록은 남습니다.';}
+                delete l.rescanPrev;await scoutLedgerSave(l);
+            }
+            return msg;
+        });
+    }finally{scoutLedgerAbort.delete(scope);}
+}
 async function scoutLedgerTidyUndo(scope){
     return scoutLedgerSerial(async()=>{
         const raw=await risuai.pluginStorage.getItem(scoutLedgerBackupKey(scope));
@@ -7949,6 +7966,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
     };
     try{
       outer: while(ledger.hashes.length<messages.length&&batches<maxBatches){
+        if(scoutLedgerAbort.has(scope))break;
         const start=ledger.hashes.length;let end=start,size=0,lastComplete=start;
         const capC=Number(loreqa_cfg.ledgerBatchChars)||0,capT=Math.max(1,Number(loreqa_cfg.ledgerBatchTurns)||2);let turns=0;
         while(end<messages.length){size+=messages[end].text.length;end++;if(['char','assistant'].includes(messages[end-1].role)){lastComplete=end;turns++;}if((capC>0&&size>=capC)||turns>=capT)break;}
@@ -7974,7 +7992,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         // 읽은 구간의 메시지가 그대로인지만 본다. 그사이 새 메시지가 붙는 건 괜찮다. 바뀌었으면 이 묶음 결과만 버리고 다시 읽는다.
         if(await resync(end,'저장 전'))continue outer;
         for(const event of events){const last=[...ledger.events].reverse().find(e=>e.entity===event.entity&&e.dimension===event.dimension);if(last?.after===event.after||ledger.events.some(e=>e.id===event.id))continue;ledger.events.push(event);ledger.sinceTidy=(ledger.sinceTidy||0)+1;}
-        ledger.hashes=messages.slice(0,end).map(scoutMessageHash);await scoutLedgerSave(ledger);batches++;
+        ledger.hashes=messages.slice(0,end).map(scoutMessageHash);if(ledger.rescanPrev&&ledger.hashes.length>=ledger.rescanPrev.length)delete ledger.rescanPrev;await scoutLedgerSave(ledger);batches++;
         // 새 기록이 정해진 수만큼 쌓이면 장부를 정리한다. 실패해도 읽기는 계속.
         const every=Number(loreqa_cfg.ledgerTidyEvery)||0;
         if(every>0&&(ledger.sinceTidy||0)>=every){
@@ -7994,7 +8012,7 @@ async function scoutLedgerPanel(){
     
     const status=document.createElement('p');status.textContent=scoutLedgerStatus.get(scope)||'저장된 변경 기록';box.appendChild(status);
     const all=document.createElement('button');all.textContent='기존 대화 전체 읽기 / 이어서 읽기';all.onclick=async()=>{if(all.disabled)return;all.disabled=true;try{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');await scoutLedgerSync(fresh,Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{all.disabled=false;}};box.appendChild(all);
-    const rescan=document.createElement('button');rescan.textContent='인지 기록 포함 과거 재검사';rescan.onclick=async()=>{rescan.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);scoutLedgerReconcile(l,scoutCompleted(fresh));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{rescan.disabled=false;}};box.appendChild(rescan);
+    const rescan=document.createElement('button');rescan.textContent='인지 기록 포함 과거 재검사';rescan.onclick=async()=>{rescan.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);scoutLedgerReconcile(l,scoutCompleted(fresh));if(!l.rescanPrev||l.hashes.length>l.rescanPrev.length)l.rescanPrev=l.hashes;l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{rescan.disabled=false;}};box.appendChild(rescan);
     const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='직접 수정한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>e.edited);l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
     const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 직접 수정한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
@@ -8011,7 +8029,9 @@ async function scoutLedgerPanel(){
         const logBtn=[...box.querySelectorAll(':scope > button')].find(b=>b.textContent==='중대 분기 진단 로그'),logPane=logBtn?.nextElementSibling;if(logBtn)logBtn.textContent='진단 로그';
         const bar=document.createElement('div');bar.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-bottom:10px';
         const group=(label,els)=>{const l=document.createElement('span');l.textContent=label;l.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';const g=document.createElement('div');g.style.cssText='display:flex;flex-wrap:wrap;gap:6px';for(const el of els)if(el)g.appendChild(el);bar.append(l,g);};
-        group('읽기',[all,redo,rescan]);
+        const stop=document.createElement('button');stop.textContent='읽기 중지';stop.title='진행 중인 읽기를 멈춥니다. 다시 훑기 중이었다면 원래 읽은 지점으로 돌려 남은 부분을 다시 읽지 않습니다. 처음부터 다시 읽기는 멈춘 곳에서 다음 턴에 이어집니다.';stop.style.color='#f38ba8';
+        stop.onclick=async()=>{stop.disabled=true;status.textContent='멈추는 중… (지금 요청 중인 묶음까지는 끝납니다)';try{const m=await scoutLedgerStop(scope);scoutLedgerStatus.set(scope,m||'읽기를 멈췄습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{stop.disabled=false;}};
+        group('읽기',[all,redo,rescan,stop]);
         group('정리',[tidy,undo]);
         group('기타',[imp,logBtn]);
         status.after(bar);
