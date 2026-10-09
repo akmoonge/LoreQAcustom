@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.9
+//@version 3.2.10
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8348,7 +8348,7 @@ async function loreqa_ledgerExport(scope) {
 //   (근거가 안 맞는 기록은 다음 읽기에서 지워지기 때문).
 async function loreqa_ledgerImport(scope, data, replace) {
     if (data?.format !== 'loreqacustom-ledger-v1' || !Array.isArray(data.events)) throw Error('분기 기록 JSON 형식이 아닙니다 (format: loreqacustom-ledger-v1).');
-    const r = { added: 0, withEvidence: 0, asManual: 0, skipped: 0, readFrom: 0, readTo: 0 };
+    const r = { added: 0, withEvidence: 0, asManual: 0, skipped: 0, readFrom: 0, readTo: 0, fileRead: -1, matched: -1 };
     await scoutLedgerSerial(async () => {
         const snap = await scoutSnapshot(); if (snap.scope !== scope) throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');
         const msgs = scoutCompleted(snap), L = await scoutLedgerLoad(scope);
@@ -8373,6 +8373,7 @@ async function loreqa_ledgerImport(scope, data, replace) {
         r.readFrom = L.hashes.length;
         if (Array.isArray(data.hashes)) {
             let k = 0; while (k < data.hashes.length && k < msgs.length && scoutHashMatch(data.hashes[k], msgs[k])) k++;
+            r.fileRead = data.hashes.length; r.matched = k;
             if (replace || k > L.hashes.length) { L.hashes = msgs.slice(0, k).map(scoutMessageHash); delete L.rescanPrev; }
         } else if (replace) { L.hashes = []; delete L.rescanPrev; }
         r.readTo = L.hashes.length;
@@ -8423,7 +8424,7 @@ async function scoutLedgerPanel(){
         const impBtn=(label,replace)=>{const b=document.createElement('button');b.textContent=label;
             b.title=replace?'지금 기록을 모두 지우고 파일의 기록으로 바꿉니다.':'지금 기록은 두고 파일의 기록을 더합니다. 같은 기록은 건너뜁니다.';
             b.onclick=()=>{if(replace&&!confirm('지금 분기 기록을 모두 지우고 파일의 기록으로 바꿉니다. 계속할까요?'))return;
-                loreqa_pickJson(async data=>{const r=await loreqa_ledgerImport(scope,data,replace);scoutLedgerStatus.set(scope,`JSON에서 ${r.added}개 가져옴 (근거 확인 ${r.withEvidence} · 근거 없이 직접 기록으로 ${r.asManual} · 건너뜀 ${r.skipped})`+(r.readTo!==r.readFrom?` · 읽은 위치 ${r.readFrom} → ${r.readTo}`:Array.isArray(data.hashes)?'':' · 이 파일에는 읽은 위치가 없어 그대로 둠 (시작 위치로 직접 옮길 수 있음)'));await scoutLedgerPanel();},msg=>{status.textContent=msg;});};
+                loreqa_pickJson(async data=>{const r=await loreqa_ledgerImport(scope,data,replace);scoutLedgerStatus.set(scope,`JSON에서 ${r.added}개 가져옴 (근거 확인 ${r.withEvidence} · 근거 없이 직접 기록으로 ${r.asManual} · 건너뜀 ${r.skipped})`+(r.fileRead<0?' · 이 파일에는 읽은 위치가 없어 그대로 둠 (새 버전에서 다시 내보내거나, 시작 위치로 직접 옮길 수 있음)':r.readTo!==r.readFrom?` · 읽은 위치 ${r.readFrom} → ${r.readTo}`:` · 읽은 위치 그대로 ${r.readFrom} (파일은 ${r.fileRead}개까지 읽음, 이 채팅과 앞에서부터 같은 메시지는 ${r.matched}개`+(r.matched<r.fileRead?`. ${r.matched}번 메시지부터 내용이 달라 그 뒤는 인정 안 함`:'')+')'));await scoutLedgerPanel();},msg=>{status.textContent=msg;});};
             return b;};
         group('JSON',[expBtn,impBtn('가져오기 (합치기)',false),impBtn('가져오기 (바꾸기)',true)]);
         group('기타',[logBtn]);
