@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.11
+//@version 3.2.12
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -3136,8 +3136,8 @@ async function loreqa_renderBoard() {
             try {
                 const L = await scoutLedgerReadAvailable(snap);
                 const active = L.events.filter(e => !L.excluded.includes(e.id)).length;
-                const d = loreqa_capTail(loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(L))), 'helperDivMax'), m = Number(loreqa_cfg.branchMainTier ?? 3);
-                info = `기록 ${L.events.length}개 · 보조 ${d.length}개 · 메인 ${m === 0 ? '끔' : loreqa_mainDivCount(d) + '개' + (LOREQA_TIER_LABEL[m] || '')} · 제외 ${L.events.length - active}개`;
+                const all = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(L))), d = loreqa_capTail(all, 'helperDivMax'), m = Number(loreqa_cfg.branchMainTier ?? 3);
+                info = `기록 ${L.events.length}개 · 보조 ${d.length}개 · 메인 ${m === 0 ? '끔' : loreqa_mainDivCount(all) + '개' + (LOREQA_TIER_LABEL[m] || '')} · 제외 ${L.events.length - active}개`;
                 const stx = scoutLedgerStatus.get(snap.scope); if (stx) info += ` · ${stx}`;
                 if (scoutLedgerPaused.has(scoutLedgerScope(snap))) info += ' · 일시정지됨';
             } catch (e) { info = '기록을 읽지 못함: ' + (e?.message || e); }
@@ -3258,10 +3258,10 @@ async function loreqa_renderLedgerSummary(snap) {
     try { ledger = await scoutLedgerReadAvailable(snap); } catch (e) { box.textContent = '분기 기록을 읽지 못했습니다: ' + (e?.message || e); return; }
     const active = ledger.events.filter(e => !ledger.excluded.includes(e.id));
     // 실제 주입(loreqa_prepareTurn · loreqa_injectUnified)과 같은 계산: 보조 = 최신 상태(상한까지), 메인 = 설정에 따라 ★만 / 전부 / 끔
-    const helper = loreqa_capTail(loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(ledger))), 'helperDivMax');
+    const allStates = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(ledger))), helper = loreqa_capTail(allStates, 'helperDivMax');
     const tier = Number(loreqa_cfg.branchMainTier ?? 3);
     box.innerHTML = '';
-    box.appendChild(loreqa_el('div', 'loreqa-muted', `기록 ${ledger.events.length}개 · 메인 주입 ${tier === 0 ? '끔' : loreqa_mainDivCount(helper) + '개' + (LOREQA_TIER_LABEL[tier] || '')} · 보조 ${helper.length}개 · 제외 ${ledger.events.length - active.length}개` + (scoutLedgerStatus.get(snap.scope) ? ` · ${scoutLedgerStatus.get(snap.scope)}` : '')));
+    box.appendChild(loreqa_el('div', 'loreqa-muted', `기록 ${ledger.events.length}개 · 메인 주입 ${tier === 0 ? '끔' : loreqa_mainDivCount(allStates) + '개' + (LOREQA_TIER_LABEL[tier] || '')} · 보조 ${helper.length}개 · 제외 ${ledger.events.length - active.length}개` + (scoutLedgerStatus.get(snap.scope) ? ` · ${scoutLedgerStatus.get(snap.scope)}` : '')));
     for (const e of active.slice(-3).reverse()) {
         const line = loreqa_el('div', 'loreqa-muted', `• ${e.core ? '★ ' : ''}${e.entity} · ${e.after}`);
         line.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;';
@@ -7184,13 +7184,14 @@ async function loreqa_detectTimeJump(snap, label) {
 }
 // 요청 직전: 위치 신호 읽기 → (위치가 새로우면) 시점 가드 생성 → 분기 기록 읽기
 async function loreqa_prepareTurn() {
-    const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], fixed: '', bucket: '_' };
+    // divergences: 보조 모델용 (최신 helperDivMax 개). allDivergences: 메인 후보용 전체 — ★ 우선이 오래된 ★를 잃지 않게
+    const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], allDivergences: [], fixed: '', bucket: '_' };
     let snap;
     try { snap = await scoutSnapshot(); t.scope = snap.scope; } catch (e) { return t; }
     const cfg = loreqa_cfg;
     if (loreqa_branchOn('compLedger')) {
         t.fixed = loreqa_capStr(String(cfg.scoutFactsByScope?.[t.scope] || '').trim(), 'fixedChars');
-        try { t.divergences = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))); t.divergences = loreqa_capTail(t.divergences, 'helperDivMax'); }
+        try { t.allDivergences = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))); t.divergences = loreqa_capTail(t.allDivergences, 'helperDivMax'); }
         catch (e) { console.warn('[LoreQA] 분기 기록 읽기 실패:', e?.message || e); }
     }
     if (!loreqa_flowOn('compPosition')) { loreqa_stageSet({ pos: '끔', guard: '끔' }); return t; }
@@ -9019,7 +9020,7 @@ function loreqa_injectUnified(messages, t) {
         inj.pos = c;
     }
     const mainTier = Number(loreqa_cfg.branchMainTier ?? 3);
-    const mainDiv = loreqa_mainDivergences(t.divergences);
+    const mainDiv = loreqa_mainDivergences(t.allDivergences?.length ? t.allDivergences : t.divergences);
     if (mainTier !== 0 && (mainDiv.length || t.fixed)) {
         const c = LOREQA_DIV_BLOCK + '\n' + loreqa_prompt('injDiv', {}, ko) + loreqa_formatDivergences({ ...t, divergences: mainDiv }, ko, 'divMainChars', mainTier === 3);
         loreqa_insertSystemSafely(messages, c, '분기 주입');

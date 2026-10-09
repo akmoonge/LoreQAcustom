@@ -70,7 +70,8 @@ comments are Korean.
   chat's history would get wrong, that is still a current state, and that involves at
   least one canon character / group / place / event. No OC–OC-only records, no canon
   events with the same outcome, no trips/meals/"was present", no in-progress states.
-- Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences` per `branchMainTier`:
+- Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
+  latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
   `divMainChars` (`loreqa_pickDivergences`; overflow drops the oldest). Helpers (Q&A, guard,
   guide) always get all latest states (`loreqa_latestStates`, `helperDivMax`).
