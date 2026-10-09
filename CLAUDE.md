@@ -64,9 +64,13 @@ comments are Korean.
   chat's history would get wrong, that is still a current state, and that involves at
   least one canon character / group / place / event. No OC–OC-only records, no canon
   events with the same outcome, no trips/meals/"was present", no in-progress states.
-- Tiers: `core:true` (★) goes to the main model (setting `branchMainTier`: 0 off /
-  1 core / 2 all); helpers (Q&A, guard, guide) always get all latest states
-  (`loreqa_latestStates`, max 60).
+- Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences` per `branchMainTier`:
+  0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
+  `divMainChars` (`loreqa_pickDivergences`; overflow drops the oldest). Helpers (Q&A, guard,
+  guide) always get all latest states (`loreqa_latestStates`, `helperDivMax`).
+- Hand-written records (`loreqa_manualEvent`): no evidence, `edited`+`manual`, so re-reads and
+  tidy keep them. JSON: `loreqa_ledgerExport/Import` (`loreqacustom-ledger-v1`); imported
+  records whose evidence hashes don't match this chat become manual records.
 - Tidy: `scoutLedgerTidyWork` merges/drops/re-flags core every `ledgerTidyEvery` new
   records or via "지금 정리"; unmentioned and user-edited records are kept; undo backup.
 - Batching: `ledgerBatchTurns` (turns), `ledgerBatchChars` (0 = no cap), `ledgerEvery`
@@ -82,6 +86,8 @@ comments are Korean.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
 - Guard regenerates only on position change; guide on position change or ledger count change.
+- JSON: `loreqa_posExport/Import` (`loreqacustom-position-v1`: `cur` + `byPos`); import sets
+  `guideDivN` to this chat's count so the imported guide is not regenerated at once.
 
 ## Testing
 
