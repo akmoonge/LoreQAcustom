@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.15
+//@version 3.2.16
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -77,6 +77,7 @@ const LOREQA_DEFAULTS = {
     jumpWait:   0,     // 전개모드: 앞으로 건너뛴 턴은 위치 판정·가드 생성이 끝날 때까지 메인 요청을 기다림
     jumpApi:    '',    // 시간 점프 감지 API ('' = 전개모드 API)
     jumpModel:  '',    // 시간 점프 감지 모델 이름
+    jumpReasoning: 'low', // 시간 점프 감지 추론 수준: low | minimal | '' (모델 기본) | medium | high | profile (API 프로필 설정 그대로)
     guideCount: 3,     // 서사 가이드에 담을 다음 원작 사건 수
     guideStrength: 0,  // 0=참고만, 1=그 방향으로 유도
     flowMigrated: 0,
@@ -688,7 +689,15 @@ function loreqa_resolveApi(apiSel, model, base = loreqa_cfg) {
 const loreqa_branchApi = () => loreqa_resolveApi(loreqa_cfg.branchApi, loreqa_cfg.branchModel);
 const loreqa_flowApi = () => loreqa_resolveApi(loreqa_cfg.flowApi, loreqa_cfg.flowModel);
 // 시간 점프 감지: 따로 정하지 않으면 전개모드 API
-const loreqa_jumpApi = () => (loreqa_cfg.jumpApi || String(loreqa_cfg.jumpModel || '').trim()) ? loreqa_resolveApi(loreqa_cfg.jumpApi, loreqa_cfg.jumpModel) : loreqa_flowApi();
+// 감지용 API · 모델은 따로 정할 수 있고(비우면 전개모드 API), 추론 수준은 항상 감지용 설정을 쓴다.
+//   한 단어로 답하는 판단이라 깊게 생각할 이유가 없다. 프로필의 추론 수준(Gemini 기본 '높음')을 그대로 쓰면 생각 토큰이 붙는다.
+const loreqa_jumpApi = () => {
+    const c = loreqa_cfg;
+    let [t, p] = (c.jumpApi || String(c.jumpModel || '').trim()) ? loreqa_resolveApi(c.jumpApi, c.jumpModel) : loreqa_flowApi();
+    if (!t) { t = c.apiType || 'gemini'; p = { ...loreqa_getProfile() }; }
+    const lv = c.jumpReasoning ?? 'low';
+    return [t, lv === 'profile' ? p : { ...p, reasoningLevel: lv }];
+};
 
 let loreqa_cfgBase = null;       // 모드 실행 중 원래 설정 (저장은 항상 이쪽으로)
 let loreqa_modeCaches = {};      // 모드별 1차/2차 캐시
@@ -9450,7 +9459,8 @@ function loreqa_buildFlowContent(left,right){
     const secJump=scoutSection('시간 점프');
     loreqa_trkToggle(secJump,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
     loreqa_trkToggle(secJump,'jumpWait','점프 턴은 판정 기다리기','켜면 앞으로 건너뛴 턴은 위치 판정·시점 가드 생성이 끝난 뒤 메인 요청을 보냄. 그 턴만 수십 초 늦어지는 대신 같은 턴에 새 위치가 반영됨');
-    loreqa_trkApiRows(secJump,'jumpApi','jumpModel','시간 점프 감지에 쓸 API. 비우면 전개모드 API. 빠르고 싼 모델 권장.','전개모드 API 그대로');
+    loreqa_trkApiRows(secJump,'jumpApi','jumpModel','감지용 API. 비우면 전개모드 API. 빠르고 싼 모델 권장.','전개모드 API 그대로');
+    secJump.appendChild(loreqa_createRow('추론 수준',loreqa_createSelect('canon-trk-jumpReasoning',[{value:'low',label:'낮음 (권장)'},{value:'minimal',label:'최소'},{value:'',label:'모델 기본값'},{value:'medium',label:'중간'},{value:'high',label:'높음'},{value:'profile',label:'API 프로필 설정 그대로'}],loreqa_cfg.jumpReasoning??'low',async v=>{loreqa_cfg.jumpReasoning=v;await loreqa_saveConfig();}),'감지용 추론 수준. 한 단어로 답하는 판단이라 낮게 두면 생각 토큰이 거의 붙지 않음. API 탭의 프로필 설정과 따로 적용'));
     const secModel=scoutSection('모델 · 검색');
     loreqa_trkApiRows(secModel,'flowApi','flowModel','위치 판정·시점 가드·서사 가이드에 쓸 API.');
     loreqa_trkToggle(secModel,'flowSearch','웹 검색','위치 판정·시점 가드·서사 가이드에 웹 검색 사용. 끄면 모델 기억으로 추정');
