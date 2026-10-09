@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.12
+//@version 3.2.14
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -20,6 +20,8 @@ const LOREQA_DEFAULTS = {
     onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
     onlyChatLabel: '', // 위 채팅의 표시용 이름
     source:   '',      // 작품명
+    envCtx: 0, envPrompt: 0, envOut: 0, envIn: 0, envLang: 'en', // 원클릭 세팅 '내 사용 환경': 최대 컨텍스트 · 고정 프롬프트 · 보통 응답 · 보통 입력 (토큰), 대화 언어
+    envRule: {},       // 원클릭 세팅 '계산 기준 (고급)': LOREQA_ENV_RULE 덮어쓰기 (빈 값 = 기본)
     fameTier: '',      // 작품 인지도 추천 세팅: major | semi | minor | niche ('' = 지정 안 함). LOREQA_FAME
     lore:     2,       // 0=사용안함, 1=1차만, 2=1차+2차검증, 3=MCP모드
     rewrite:  0,       // 0=끄기, 1=켜기
@@ -58,7 +60,8 @@ const LOREQA_DEFAULTS = {
     mcpExtraInstructions:    '', // MCP 활성화 시 1차/2차 양쪽에 추가 삽입할 MCP 사용 관련 지침 (mcpMaster=1 + 해당 pass MCP 활성 시만 주입)
     finalExtraInstructions:  '', // 메인 모델 주입 시 Q&A 해석 지침에 추가할 사용자 지정 지침 (빈값=미주입)
     extraSettingsContent:    '', // 1차/2차 user 메시지에 직접 주입할 추가 설정/공식 자료 본문 (빈값=미주입)
-    maxLogs:  6,       // 참조할 최근 턴 수
+    maxLogs:  3,       // 1차 질의가 참조할 최근 턴 수 (유저 입력 + 응답 = 1턴)
+    turnUnit: 1,       // 1 = 턴 수 설정이 턴 단위. 이 키가 없는 옛 설정·프리셋은 maxLogs·posReadMsgs 가 메시지 수라 한 번 반으로 바꾼다
     language: '한국어', // 출력 언어
     hotkey:   'F2',    // 설정창 토글 단축키 (event.key 값과 비교, 빈 문자열이면 비활성)
     // ── 세 모드 (창 머리의 단추) ──
@@ -121,7 +124,7 @@ const LOREQA_DEFAULTS = {
     loreLast:     2,   // 원작 Q&A 를 껐다 켤 때 복원할 로어 질의 모드
     canonMedium: 'auto', // 위치를 셀 원작 매체: auto|novel|manga|webnovel|anime|drama|game
     posModelEvery: 8,
-    posReadMsgs: 6,     // 위치 판정 때 읽을 최근 메시지 수
+    posReadMsgs: 3,     // 위치 판정 때 읽을 최근 턴 수 (키 이름은 옛것 그대로, 유저 입력 + 응답 = 1턴)
     posReadChars: 8000, // 위치 판정 때 읽을 최대 글자 수 (뒤에서부터, 0=제한 없음)  // 위치 신호가 없을 때 보조 모델 위치 판정 간격 (응답 수)
     activePresetId: '', // 현재 적용 중인 프리셋 ID
     uiTab: 'status',   // 마지막으로 연 탭
@@ -208,12 +211,27 @@ const loreqa_storeSet = (name, value) => risuai.pluginStorage.setItem('loreqacus
 // 인메모리 설정 (startup 시 pluginStorage에서 로드)
 let loreqa_cfg = { ...LOREQA_DEFAULTS };
 
+// 옛 메시지 단위 값(maxLogs·posReadMsgs, 모드별 maxLogs)을 턴 단위로. src 에 실제로 있던 값만 바꾼다
+function loreqa_toTurnUnit(o, src) {
+    const half = v => Math.max(1, Math.ceil((Number(v) || 0) / 2));
+    if (src && 'maxLogs' in src) o.maxLogs = half(src.maxLogs);
+    if (src && 'posReadMsgs' in src) o.posReadMsgs = half(src.posReadMsgs);
+    for (const m of ['char', 'set']) if (src?.modeCfg?.[m] && 'maxLogs' in src.modeCfg[m]) { o.modeCfg = o.modeCfg || {}; o.modeCfg[m] = { ...(o.modeCfg[m] || src.modeCfg[m]), maxLogs: half(src.modeCfg[m].maxLogs) }; }
+}
+// 최근 N턴의 시작 번호: 뒤에서부터 유저 메시지 N개째 (유저 입력 + 그 응답 = 1턴). 유저 메시지가 모자라면 처음부터
+function loreqa_turnStart(list, turns) {
+    let n = Math.max(1, Number(turns) || 1);
+    for (let i = list.length - 1; i >= 0; i--) if (list[i]?.role === 'user' && --n === 0) return i;
+    return 0;
+}
 async function loreqa_loadConfig() {
     try {
         const saved = await loreqa_storeGet('config');
         if (saved) {
             const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
             loreqa_cfg = { ...LOREQA_DEFAULTS, ...parsed };
+            // 턴 단위 통일: 예전 '참조 턴 수'·'판정 참조 메시지'는 메시지 수였다. 같은 양을 읽도록 한 번 반으로 바꾼다
+            if (!('turnUnit' in parsed)) { loreqa_toTurnUnit(loreqa_cfg, parsed); loreqa_cfg.turnUnit = 1; }
             // apiProfiles가 없거나 부분적인 경우 기본값 병합
             if (!loreqa_cfg.apiProfiles || typeof loreqa_cfg.apiProfiles !== 'object') {
                 loreqa_cfg.apiProfiles = { ...LOREQA_DEFAULTS.apiProfiles };
@@ -347,7 +365,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'onlyChatScope', 'onlyChatLabel', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -358,7 +376,9 @@ const loreqa_presetValue = (data, k) => (data && k in data) ? data[k] : loreqa_c
 function loreqa_presetDirty() {
     const p = loreqa_presets.find(x => x.id === loreqa_cfg.activePresetId);
     if (!p) return null;
-    return LOREQA_PRESET_FIELDS.some(k => JSON.stringify(loreqa_presetValue(p.data, k)) !== JSON.stringify(loreqa_cfg[k]));
+    let d = p.data;
+    if (d && !('turnUnit' in d)) { d = loreqa_clone(d); loreqa_toTurnUnit(d, p.data); } // 턴 단위 통일 전 프리셋
+    return LOREQA_PRESET_FIELDS.some(k => JSON.stringify(loreqa_presetValue(d, k)) !== JSON.stringify(loreqa_cfg[k]));
 }
 // ── 모드별 원작 Q&A 설정 ──
 //   인물모드·세계관모드가 각자 질의 방식, 웹 검색, 참고 지침, 1차 옵션, 캐릭터 & 보정을 따로 가진다.
@@ -435,6 +455,151 @@ async function loreqa_applyFame(tier) {
     loreqa_cache = null; loreqa_modeCaches = {}; scoutCache = null;
     await loreqa_saveConfig();
     return true;
+}
+// ── 내 사용 환경으로 N값 맞추기: 컨텍스트 · 응답 · 입력 길이(토큰)와 언어로 분량에서 나오는 값만 근사 계산 ──
+//   비율은 가정이다. 사용 통계가 모이면 여기 숫자만 고친다.
+const LOREQA_ENV_RULE = {
+    historyShare: 0.6,   // 고정 프롬프트 크기를 비웠을 때: 메인 컨텍스트 중 대화 기록이 차지한다고 볼 몫
+    pluginTokens: 2500,  // 이 플러그인이 메인에 넣는 Q&A · 위치 · 가드 · 가이드 블록 몫 (분기 블록은 따로 셈)
+    readBefore: 3,       // 메인 컨텍스트에 들어가는 턴 수의 1/3 안에 분기 기록을 읽는다
+    maxGap: 2,           // 분기 기록에도 없고 인물·세계관 Q&A 대화 창에도 없는 턴을 이만큼까지만 허용
+    charTokens: 4000,    // 인물모드 1차 질의가 읽을 대화량 (매 턴 호출이라 짧게: 지금 장면이면 충분)
+    setTokens: 6000,     // 세계관모드 1차 질의가 읽을 대화량
+    posTokens: 10000,    // 위치 판정이 읽을 대화량 (몇 턴에 한 번이라 넉넉하게: 흩어진 시점 단서)
+    batchTokens: 12000,  // 분기 추출 한 묶음에 보낼 대화량
+    mainDivShare: 0.05,  // 메인 분기 블록이 쓸 컨텍스트 몫
+    charsPerToken: { en: 4, ko: 1.5, ja: 1.5, zh: 1.2 },
+};
+// 고급 칸에서 사용자가 바꿀 수 있는 기준 (envRule 에 저장, 비우면 기본값)
+const LOREQA_ENV_RULE_UI = [
+    ['charTokens', '인물모드 읽을 대화량 (토큰)', '매 턴 도는 호출. 줄이면 싸지고, 늘리면 장면을 더 길게 봄'],
+    ['setTokens', '세계관모드 읽을 대화량 (토큰)', ''],
+    ['posTokens', '위치 판정 읽을 대화량 (토큰)', '몇 턴에 한 번 돌아서 넉넉해도 부담이 적음'],
+    ['batchTokens', '분기 한 묶음 대화량 (토큰)', '크면 요청 수가 줄고, 작으면 꼼꼼히 읽음'],
+    ['maxGap', '공백 허용 턴', '분기 기록에도 Q&A 대화 창에도 없는 턴을 몇 턴까지 허용할지'],
+    ['mainDivPct', '메인 분기 블록 비율 (%)', '메인 컨텍스트 중 분기 기록에 쓸 몫'],
+    ['pluginTokens', '플러그인 블록 몫 (토큰)', '고정 프롬프트 크기를 넣었을 때, 이 플러그인의 Q&A·위치·가드·가이드 블록으로 따로 뺄 양'],
+];
+function loreqa_envRule() {
+    const r = { ...LOREQA_ENV_RULE }, u = loreqa_cfg.envRule || {};
+    for (const [k] of LOREQA_ENV_RULE_UI) {
+        const v = Number(u[k]);
+        if (u[k] === '' || u[k] == null || !Number.isFinite(v) || v < 0) continue;
+        if (k === 'mainDivPct') r.mainDivShare = v / 100; else r[k] = v;
+    }
+    return r;
+}
+const LOREQA_ENV_LANGS = [{ value: 'en', label: '영어' }, { value: 'ko', label: '한국어' }, { value: 'ja', label: '일본어' }, { value: 'zh', label: '중국어' }];
+// 시뮬레이션(10가지 환경)으로 고른 식: 쓰는 곳마다 따로 예산, 분기 읽기는 한 묶음이 찰 때 (메인 기억의 1/3, 공백 maxGap 이하)
+//   prompt(고정 프롬프트 크기)를 넣으면 대화 자리 = 컨텍스트 − 프롬프트 − 응답 − 플러그인 블록 − 분기 블록. 비우면 historyShare 로 근사.
+function loreqa_envCalc(p, R = loreqa_envRule()) {
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(v)));
+    const ctx = Number(p.ctx) || 0, out = Number(p.out) || 0, inp = Number(p.inp) || 0, prompt = Number(p.prompt) || 0;
+    if (ctx < 1000 || out < 1 || inp < 1) throw Error('컨텍스트(1000 이상), 응답 길이, 입력 길이를 모두 넣어 주세요.');
+    const turn = inp + out, cpt = R.charsPerToken[p.lang] || 4;
+    const divMainChars = clamp(ctx * R.mainDivShare * cpt, 1200, 40000);
+    const room = prompt > 0 ? ctx - prompt - out - R.pluginTokens - divMainChars / cpt : ctx * R.historyShare - out;
+    if (room < turn) throw Error(`대화가 들어갈 자리가 거의 없습니다 (약 ${Math.max(0, Math.round(room))}토큰). 고정 프롬프트나 응답 길이에 비해 컨텍스트가 작습니다.`);
+    const remember = Math.max(1, Math.floor(room / turn));
+    const charLogs = clamp(R.charTokens / turn, 2, 6), setLogs = clamp(R.setTokens / turn, 2, 6);
+    const posTurns = clamp(R.posTokens / turn, 3, 8), batch = clamp(R.batchTokens / turn, 1, 6);
+    return {
+        remember, room: Math.round(room), promptGiven: prompt > 0,
+        values: {
+            ledgerEvery: clamp(Math.min(remember / R.readBefore, batch, Math.min(charLogs, setLogs) + R.maxGap), 1, batch),
+            ledgerBatchTurns: batch,
+            charLogs, setLogs,
+            posReadMsgs: posTurns,
+            posReadChars: Math.round(R.posTokens * cpt),
+            divMainChars,
+        },
+    };
+}
+const LOREQA_ENV_LABELS = { ledgerEvery: '분기 자동 읽기 간격 (턴)', ledgerBatchTurns: '분기 한 묶음 턴 수', charLogs: '인물모드 1차 참조 턴 수', setLogs: '세계관모드 1차 참조 턴 수', posReadMsgs: '위치 판정 참조 턴 수', posReadChars: '위치 판정 참조 글자 수', divMainChars: '메인 분기 블록 글자 수' };
+function loreqa_envCurrent(k) {
+    const mc = loreqa_ensureModeCfg();
+    if (k === 'charLogs') return mc.char.maxLogs;
+    if (k === 'setLogs') return mc.set.maxLogs;
+    return loreqa_cfg[k] ?? LOREQA_DEFAULTS[k];
+}
+async function loreqa_envApply(values) {
+    const mc = loreqa_ensureModeCfg();
+    for (const [k, v] of Object.entries(values)) {
+        if (k === 'charLogs') mc.char.maxLogs = v;
+        else if (k === 'setLogs') mc.set.maxLogs = v;
+        else loreqa_cfg[k] = v;
+    }
+    loreqa_cache = null; loreqa_modeCaches = {};
+    await loreqa_saveConfig();
+}
+function loreqa_buildQuickEnv() {
+    const sec = loreqa_section('내 사용 환경으로 N값 맞추기');
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', 'Risu에서 쓰는 최대 컨텍스트, 고정 프롬프트 크기, 보통 응답·입력 길이(토큰), 대화 언어를 넣고 계산하면, 분량에 따라 정해지는 값(분기 읽기 간격·묶음 크기, 인물·세계관·위치 판정이 읽을 턴 수, 글자 수 상한)을 근사로 계산합니다. 위치 판정 간격과 장부 정리 간격처럼 이야기 속도에 달린 값은 바꾸지 않습니다.'));
+    const numIn = (val, ph) => { const n = loreqa_el('input', 'loreqa-input'); n.type = 'number'; n.min = '0'; n.placeholder = ph; n.value = val ?? ''; if (n.value === '0') n.value = ''; n.style.width = '110px'; return n; };
+    const ctxIn = numIn(loreqa_cfg.envCtx, '예: 32000'), promptIn = numIn(loreqa_cfg.envPrompt, '비우면 40%'), outIn = numIn(loreqa_cfg.envOut, '예: 800'), inIn = numIn(loreqa_cfg.envIn, '예: 150');
+    const langSel = loreqa_createSelect('loreqa-env-lang', LOREQA_ENV_LANGS, loreqa_cfg.envLang || 'en', () => reset());
+    sec.appendChild(loreqa_createRow('최대 컨텍스트 (토큰)', ctxIn, 'Risu 설정의 최대 컨텍스트'));
+    sec.appendChild(loreqa_createRow('고정 프롬프트 크기 (토큰)', promptIn, '시스템 프롬프트 · 캐릭터 설명 · 페르소나 · 로어북 · 작가의 노트 · 다른 플러그인 주입 등 대화 말고 매번 들어가는 양. 비우면 컨텍스트의 40%로 가정'));
+    sec.appendChild(loreqa_createRow('보통 응답 길이 (토큰)', outIn, '봇 응답 한 번의 대략적인 길이'));
+    sec.appendChild(loreqa_createRow('보통 입력 길이 (토큰)', inIn, '유저 입력 한 번의 대략적인 길이'));
+    sec.appendChild(loreqa_createRow('대화 언어', langSel, '토큰을 글자 수로 바꾸는 데 씀 (영어 약 4자, 한·일 약 1.5자, 중국어 약 1.2자 = 1토큰)'));
+    // 계산 기준 (고급): 비우면 기본값
+    const adv = loreqa_foldSection('계산 기준 (고급)');
+    adv.appendChild(loreqa_el('div', 'loreqa-muted', '비워 두면 기본값. 10가지 환경 시뮬레이션으로 고른 값이며, 사용 경험에 맞게 고칠 수 있습니다.'));
+    const ruleIns = {};
+    for (const [k, label, sub] of LOREQA_ENV_RULE_UI) {
+        const def = k === 'mainDivPct' ? LOREQA_ENV_RULE.mainDivShare * 100 : LOREQA_ENV_RULE[k];
+        const n = numIn(loreqa_cfg.envRule?.[k] ?? '', '기본 ' + def);
+        n.addEventListener('input', () => reset());
+        ruleIns[k] = n; adv.appendChild(loreqa_createRow(label, n, sub));
+    }
+    const readRule = () => Object.fromEntries(Object.entries(ruleIns).map(([k, el]) => [k, el.value === '' ? '' : Number(el.value)]));
+    const ruleNow = () => { const saved = loreqa_cfg.envRule; loreqa_cfg.envRule = readRule(); try { return loreqa_envRule(); } finally { loreqa_cfg.envRule = saved; } };
+    const result = loreqa_el('div', 'loreqa-muted'); result.style.cssText = 'margin-top:8px;white-space:pre-wrap;line-height:1.6';
+    const btns = loreqa_el('div', 'loreqa-lore-buttons');
+    let calc = null;
+    const apply = loreqa_btn('적용', async () => {
+        if (!calc) return;
+        loreqa_cfg.envCtx = Number(ctxIn.value) || 0; loreqa_cfg.envPrompt = Number(promptIn.value) || 0;
+        loreqa_cfg.envOut = Number(outIn.value) || 0; loreqa_cfg.envIn = Number(inIn.value) || 0; loreqa_cfg.envLang = langSel.value;
+        loreqa_cfg.envRule = readRule();
+        await loreqa_envApply(calc.values);
+        loreqa_cfg.uiTab = 'quick'; await loreqa_openSettingsWindow();
+    });
+    apply.disabled = true;
+    const reset = () => { calc = null; apply.disabled = true; };
+    for (const el of [ctxIn, promptIn, outIn, inIn]) el.addEventListener('input', reset);
+    const calcBtn = loreqa_btn('계산', () => {
+        try {
+            calc = loreqa_envCalc({ ctx: ctxIn.value, prompt: promptIn.value, out: outIn.value, inp: inIn.value, lang: langSel.value }, ruleNow());
+            result.textContent = `대화가 들어갈 자리: 약 ${calc.room.toLocaleString()}토큰${calc.promptGiven ? '' : ' (고정 프롬프트를 컨텍스트의 40%로 가정)'}\n`
+                + `메인 모델 컨텍스트에 들어가는 최근 대화: 약 ${calc.remember}턴 (이보다 오래된 일은 분기 기록으로만 전달됨)\n\n`
+                + Object.entries(calc.values).map(([k, v]) => `· ${LOREQA_ENV_LABELS[k]}: ${loreqa_envCurrent(k)} → ${v}`).join('\n')
+                + '\n\n적용을 누르면 계산한 값이 들어갑니다.';
+            apply.disabled = false;
+        } catch (e) { calc = null; apply.disabled = true; result.textContent = String(e.message || e); }
+    });
+    btns.append(calcBtn, apply);
+    sec.append(btns, result, adv);
+    return sec;
+}
+// 원클릭 세팅 탭: 작품 인지도 단계 카드. 누르면 바뀔 항목을 보여 주고 확인 뒤 적용 (켜고 끄는 값만)
+function loreqa_buildQuickFame() {
+    const sec = loreqa_section('작품 인지도');
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', '작품이 얼마나 알려져 있는지 고르면, 모드와 분기·전개 서브 기능의 켜고 끄기를 그 단계에 맞게 한 번에 맞춥니다. 원작 Q&A 질의 설정(2차 검증·웹 검색), API, 지침, 길이 상한, 프리셋은 그대로입니다.'));
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', '지금: ' + loreqa_fameText()));
+    for (const [key, T] of Object.entries(LOREQA_FAME)) {
+        const card = document.createElement('div');
+        const on = loreqa_cfg.fameTier === key;
+        card.style.cssText = 'margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid ' + (on ? '#89b4fa' : '#313244') + ';display:flex;gap:10px;align-items:center;justify-content:space-between';
+        const txt = document.createElement('div');
+        txt.append(loreqa_el('div', '', T.label + (on ? (loreqa_fameDirty() ? ' · 적용됨 (수정됨)' : ' · 적용됨') : '')), loreqa_el('div', 'loreqa-muted', T.note));
+        txt.firstChild.style.cssText = 'font-weight:600;color:#cdd6f4';
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'loreqa-button'; b.style.minWidth = 'auto'; b.style.flexShrink = '0'; b.textContent = on ? '다시 적용' : '적용';
+        b.addEventListener('click', async () => { if (await loreqa_applyFame(key)) { loreqa_cfg.uiTab = 'quick'; await loreqa_openSettingsWindow(); } });
+        card.append(txt, b); sec.appendChild(card);
+    }
+    return sec;
 }
 // 모드별 모델: API 종류는 API 탭에 키를 넣어 둔 프로필 중에서 고르고, 모델 이름만 덮어쓸 수 있다.
 const LOREQA_API_NAMES = { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Anthropic', copilot: 'Copilot', vertex: 'Vertex AI', custom: 'Custom', grok: 'Grok', ollama: 'Ollama', deepseek: 'DeepSeek', llmgateway: 'LLM Gateway' };
@@ -535,6 +700,8 @@ function loreqa_collectPresetData() {
 
 async function loreqa_applyPresetData(data, presetId = '') {
     if (!data || typeof data !== 'object') return;
+    // 턴 단위 통일 전에 만든 프리셋은 maxLogs·posReadMsgs 가 메시지 수였다
+    if (!('turnUnit' in data)) { const d = loreqa_clone(data); loreqa_toTurnUnit(d, data); d.turnUnit = 1; data = d; }
     for (const k of LOREQA_PRESET_FIELDS) loreqa_cfg[k] = loreqa_presetValue(data, k);
     // 세 모드가 없던 옛 프리셋은 그 프리셋의 로어 질의·질의 모드에서 모드를 계산한다
     if (!('modeChar' in data) && !('modeSet' in data)) {
@@ -1375,18 +1542,6 @@ async function loreqa_openSettingsWindow() {
     sourceRow.appendChild(sourceInput);
     secBasic.appendChild(sourceRow);
 
-    // 작품 인지도: 누르면 바뀔 항목을 보여 주고 확인 뒤 추천 세팅을 적용 (켜고 끄는 값만)
-    {
-        const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
-        for (const [key, T] of Object.entries(LOREQA_FAME)) {
-            const b = document.createElement('button'); b.type = 'button'; b.className = 'loreqa-button'; b.style.minWidth = 'auto';
-            b.textContent = T.label + (loreqa_cfg.fameTier === key ? (loreqa_fameDirty() ? ' ●(수정됨)' : ' ●') : '');
-            b.title = T.note;
-            b.addEventListener('click', async () => { if (await loreqa_applyFame(key)) await loreqa_openSettingsWindow(); });
-            wrap.appendChild(b);
-        }
-        secBasic.appendChild(loreqa_createRow('작품 인지도', wrap, '누르면 그 단계에 맞게 모드와 분기·전개 서브 기능을 켜고 끄는 추천 세팅을, 바뀔 항목과 함께 보여 주고 적용. 원작 Q&A 질의 설정(2차 검증·웹 검색)·API·지침·길이 상한·프리셋은 그대로'));
-    }
 
     settingsPanel.appendChild(secBasic);
 
@@ -1763,7 +1918,7 @@ async function loreqa_openSettingsWindow() {
         const v = parseInt(maxLogsInput.value, 10);
         if (!isNaN(v) && v > 0) update('maxLogs', v);
     });
-    secFirst.appendChild(loreqa_createRow('참조 턴 수', maxLogsInput));
+    secFirst.appendChild(loreqa_createRow('참조 턴 수', maxLogsInput, '유저 입력 + 응답 = 1턴'));
 
     // 응답 길이 제한
     const limitLengthValueInput = document.createElement('input');
@@ -2825,7 +2980,7 @@ function loreqa_btn(text, onClick) { const b = loreqa_el('button', 'loreqa-butto
 // 설정창 탭: 기능 하나에 탭 하나
 // ═══════════════════════════════════════════════════════════════════════════
 const LOREQA_TABS = [
-    ['board', '현황판'],
+    ['board', '현황판'], ['quick', '원클릭 세팅'],
     ['char', '인물모드'], ['set', '세계관모드'], ['track', '분기모드'], ['flow', '전개모드'],
     ['basic', '기본 · 프리셋'], ['instr', '지침 · 자료'], ['api', 'API · MCP'],
 ];
@@ -2871,7 +3026,7 @@ function loreqa_modeSettingsSections(mode) {
     vis();
 
     const f = loreqa_foldSection('세부 설정 (1차 질의)');
-    f.appendChild(num('maxLogs', '참조 턴 수', '1차 질의가 읽을 최근 대화 수', 1));
+    f.appendChild(num('maxLogs', '참조 턴 수', '1차 질의가 읽을 최근 턴 수 (유저 입력 + 응답 = 1턴)', 1));
     const lim = loreqa_el('div'); lim.style.cssText = 'display:flex;align-items:center;gap:8px;flex:0 0 auto;';
     const limN = loreqa_el('input', 'loreqa-input'); limN.type = 'number'; limN.min = '50'; limN.style.width = '80px'; limN.value = mc().limitLengthValue; limN.disabled = Number(mc().limitLength) !== 1;
     limN.addEventListener('change', () => { const v = Math.max(50, parseInt(limN.value) || 500); limN.value = v; set('limitLengthValue', v); });
@@ -3092,6 +3247,8 @@ function loreqa_buildTabs(p) {
         '모든 보조 모델 호출 앞에 "비상업적 AU·OC 중심 팬 롤플레이, 원작 복제 목적 아님, 인용은 짧게"를 밝힘. 문구는 아래 프롬프트 편집에서 수정'));
     instr.appendChild(loreqa_promptSection(['useContext', 'verify', 'qaRef', 'qaDoubt', 'augRepeat', 'augDiverge', 'augPos', 'augGuard', 'augQuiet', 'augVerify']));
     panes.instr.pane.appendChild(instr);
+    // 원클릭 세팅
+    cols('quick', [loreqa_buildQuickFame()], [loreqa_buildQuickEnv()]);
     // API · MCP
     cols('api', [p.secApi, p.secVerifyApi], [p.secMcp]);
     // 현황판
@@ -3126,7 +3283,7 @@ async function loreqa_renderBoard() {
         const d = loreqa_modeDiag[mode];
         rows.push([label, st, st.startsWith('켜짐') ? `${loreName[mcs[mode].lore] || '?'} · ${modelOf(mcs[mode])} · 마지막 결과 ${raw ? raw.length.toLocaleString() + '자' : '없음'}${d ? ' · 종료 ' + (d.finish || '?') : ''}` : '']);
     };
-    rows.push(['인지도', loreqa_fameText(), LOREQA_FAME[c.fameTier] ? '추천 세팅 · 기본·프리셋 탭에서 바꿈' : '기본·프리셋 탭에서 작품 인지도를 고르면 추천 세팅 적용']);
+    rows.push(['인지도', loreqa_fameText(), LOREQA_FAME[c.fameTier] ? '추천 세팅 · 원클릭 세팅 탭에서 바꿈' : '원클릭 세팅 탭에서 작품 인지도를 고르면 추천 세팅 적용']);
     qa('modeChar', '인물', 'char');
     qa('modeSet', '세계관', 'set');
     let snap = null; try { snap = await scoutSnapshot(); } catch (e) {}
@@ -6355,7 +6512,7 @@ function loreqa_selectLorebookEntries(entries, mode, chatMessages, maxLogs) {
     if (mode === 2) return entries.slice(); // 전부
 
     // mode === 1 (키워드): 최근 maxLogs 메시지에서 키 매칭 + alwaysActive
-    const startIdx = Math.max(0, chatMessages.length - maxLogs);
+    const startIdx = loreqa_turnStart(chatMessages, maxLogs);
     const recent = chatMessages.slice(startIdx);
     const haystack = recent
         .map(m => (m.data || m.content || ''))
@@ -6451,7 +6608,7 @@ ${text.trim()}
 
 // 채팅 메시지 배열 → "[User]/[Character]" 라벨 챗로그 텍스트 (buildFirstPrompt 와 동일 포맷)
 function loreqa_formatChatLog(chatMessages, maxLogs) {
-    const startIdx = Math.max(0, chatMessages.length - maxLogs);
+    const startIdx = loreqa_turnStart(chatMessages, maxLogs);
     const logs = [];
     for (let i = startIdx; i < chatMessages.length; i++) {
         const msg = chatMessages[i];
@@ -6465,7 +6622,7 @@ function loreqa_formatChatLog(chatMessages, maxLogs) {
 }
 
 function loreqa_buildFirstPromptKO(chatMessages, source, personaName, maxLogs, language, searchLevel, personaDesc, charMode, isOriginal, charQuote, charSituational, limitLength, limitLengthValue, authorNoteText, charPredictScene) {
-    const startIdx = Math.max(0, chatMessages.length - maxLogs);
+    const startIdx = loreqa_turnStart(chatMessages, maxLogs);
     const logs = [];
     for (let i = startIdx; i < chatMessages.length; i++) {
         const msg = chatMessages[i];
@@ -7252,13 +7409,14 @@ async function loreqa_posModelFallback(snap, force = false) {
     if (!loreqa_cfg.source) return { status: 'error', error: '작품명이 비어 있습니다. 설정창 > 기본 설정에서 입력하세요.' };
     const st = await loreqa_posLoad(snap.scope);
     const replies = snap.list.filter(m => ['char', 'assistant'].includes(m.role)).length;
-    const readN = Math.max(1, Number(loreqa_cfg.posReadMsgs) || 6), readC = Math.max(0, Number(loreqa_cfg.posReadChars) || 0);
-    const joined = snap.history.slice(-readN).map(m => `[${m.role}] ${m.text}`).join('\n\n');
+    const readN = Math.max(1, Number(loreqa_cfg.posReadMsgs) || 3), readC = Math.max(0, Number(loreqa_cfg.posReadChars) || 0);
+    const readList = snap.history.slice(loreqa_turnStart(snap.history, readN));
+    const joined = readList.map(m => `[${m.role}] ${m.text}`).join('\n\n');
     const recent = readC > 0 ? joined.slice(-readC) : joined;
     if (!recent.trim()) return { status: 'error', error: '읽을 대화가 없습니다.' };
     // 극중 날짜·시간 신호 (상태창 Time 칸, ⏱️ 줄, YYYY-MM-DD) — 장면 내용보다 우선하는 기준점
     const times = [];
-    for (const m of snap.history.slice(-Math.max(8, readN)).reverse()) {
+    for (const m of snap.history.slice(-Math.max(8, readList.length)).reverse()) {
         for (const line of m.text.split('\n')) {
             if (/⏱|\bTime\s*\||\b\d{3,4}-\d{2}-\d{2}\b/.test(line)) {
                 const t = (line.match(/\b\d{3,4}-\d{2}-\d{2}\b[^\]|]*/) || [line.trim()])[0].trim().slice(0, 80);
@@ -7289,7 +7447,7 @@ Line 4: "Source: " followed by the site or page you relied on.
 No other text.`;
     // 날짜와 대화 내용을 함께 준다. 연표가 엉성한 원작이 많아 날짜만으로는 못 찾고,
     //   대화 내용만 주면 RP 장면과 비슷한 원작 대목으로 끌려가므로, 둘의 쓰임새를 지시문으로 갈라 둔다.
-    let basis = `대화 ${Math.min(readN, snap.history.length)}개` + (readC > 0 && joined.length > readC ? ` (뒤 ${readC.toLocaleString()}자)` : '') + (times.length ? ` + 극중 날짜 ${times[0]}` : '') + ' 기준';
+    let basis = `최근 ${readN}턴 (메시지 ${readList.length}개)` + (readC > 0 && joined.length > readC ? ` (뒤 ${readC.toLocaleString()}자)` : '') + (times.length ? ` + 극중 날짜 ${times[0]}` : '') + ' 기준';
     const system = loreqa_prompt('pos', { source: loreqa_cfg.source }, false) + `
 ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with this work.` + await loreqa_flowOcRule();
     const user = JSON.stringify({ work: loreqa_cfg.source, in_story_date_latest_first: times, recent_chat: recent, ...(await loreqa_ctxExtras('flow')) });
@@ -8066,7 +8224,7 @@ function scoutOcRule(name){
     return `\nPLAYER OC: The player character${who} is an original character who does not exist in "${loreqa_cfg.source}". Their absence from canon is not an error. Their actions in completed RP are real events: the consequences they cause for canon characters and events are confirmed changes, not canon violations. Do not invent canon background, relationships or abilities for the OC; use only what the card, persona and chat establish.`;
 }
 function scoutEvidence(snapshot,ledger=null,extras=null) {
-    const maxRecent=Math.max(8,Math.min(60,Number(loreqa_cfg.maxLogs)||20));
+    const maxRecent=Math.max(8,Math.min(60,(Number(loreqa_cfg.maxLogs)||10)*2)); // maxLogs 는 턴 수 → 메시지 수로
     const recent=snapshot.history.slice(-maxRecent), old=snapshot.history.slice(0,-maxRecent);
     // Retrieve prior turns involving currently named characters; no extra model summaries are saved.
     const query=recent.map(m=>m.text).join('\n');
@@ -9224,7 +9382,7 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkToggle(charSec,'flowAuthorNote','작가의 노트 주입','위치 판정·가드·가이드에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)');
     const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
     loreqa_trkNum(secMore,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
-    loreqa_trkNum(secMore,'판정 참조 메시지','posReadMsgs',6,1,'위치 판정 때 읽을 최근 메시지 수 (유저·봇 각각 1개)');
+    loreqa_trkNum(secMore,'판정 참조 턴 수','posReadMsgs',3,1,'위치 판정 때 읽을 최근 턴 수 (유저 입력 + 응답 = 1턴)');
     loreqa_trkNum(secMore,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
     loreqa_trkNum(secMore,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
     loreqa_trkNum(secMore,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');

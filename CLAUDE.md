@@ -47,10 +47,20 @@ comments are Korean.
   `loreqa_posModelFallback` (position judge every `posModelEvery` replies or on date change).
 - Modes / header chips: 인물 (char), 세계관 (set), 분기 (branch = divergence ledger),
   전개 (flow = position + 시점 가드 + 서사 가이드). Tabs: 현황판 / 인물모드 / 세계관모드 /
-  분기모드 / 전개모드 / 기본·프리셋 / 지침·자료 / API·MCP.
-- 작품 인지도 one-button presets: `LOREQA_FAME` (major / semi / minor / niche) is the single table
-  of on/off values (base keys + per-mode `char`/`set` cfg); `loreqa_applyFame` shows the diff and
-  applies; `fameTier` + `loreqa_fameDirty` show "(수정됨)". Values are guesses until usage data.
+  분기모드 / 전개모드 / 원클릭 세팅 / 기본·프리셋 / 지침·자료 / API·MCP.
+- 원클릭 세팅 tab: 작품 인지도 (`loreqa_buildQuickFame`, table `LOREQA_FAME`: mode chips and
+  branch/flow sub-feature on/off only; `loreqa_applyFame` shows the diff; `fameTier` +
+  `loreqa_fameDirty` show "(수정됨)") and 내 사용 환경 (`loreqa_buildQuickEnv`: context /
+  fixed-prompt / response / input tokens + language → `loreqa_envCalc` with ratios in
+  `LOREQA_ENV_RULE`, user overrides in `envRule` via the "계산 기준 (고급)" fold; no prompt size =
+  40% of context assumed; 계산 shows
+  current → computed, 적용 writes them). Separate token budgets per use (인물 4k / 세계관 6k /
+  위치 10k / 분기 묶음 12k); ledger read interval = min(batch, remembered turns / 3, helper window
+  + maxGap 2), chosen from a 10-environment simulation. All ratios and tiers are guesses until
+  usage data.
+- Every "턴" setting counts turns (user input + reply = 1 turn). `maxLogs` and `posReadMsgs` used
+  to count messages; `turnUnit` marks converted configs/presets (`loreqa_toTurnUnit` halves old
+  values once), and `loreqa_turnStart(list, n)` finds where the last n turns start.
 - Settings UI layout in each mode tab: frequently used toggles first, then small topic sections
   (모델 · 검색/첨부, 캐릭터 & 보정, 시간 점프), and numbers / caps last in a collapsed
   `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold.
