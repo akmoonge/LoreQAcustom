@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.8
+//@version 3.2.9
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -69,6 +69,10 @@ const LOREQA_DEFAULTS = {
     flowApi:    '',    // 전개모드가 쓸 API 종류 ('' = 1차 API)
     flowModel:  '',    // 전개모드 모델 이름 덮어쓰기
     compGuide:  0,     // 서사 가이드: 다음 원작 사건 안내 (기본 끔)
+    jumpDetect: 1,     // 전개모드: 요청 직전에 유저 입력의 시간 점프를 가벼운 모델로 감지 (매 턴 짧은 호출 1회)
+    jumpWait:   0,     // 전개모드: 앞으로 건너뛴 턴은 위치 판정·가드 생성이 끝날 때까지 메인 요청을 기다림
+    jumpApi:    '',    // 시간 점프 감지 API ('' = 전개모드 API)
+    jumpModel:  '',    // 시간 점프 감지 모델 이름
     guideCount: 3,     // 서사 가이드에 담을 다음 원작 사건 수
     guideStrength: 0,  // 0=참고만, 1=그 방향으로 유도
     flowMigrated: 0,
@@ -399,6 +403,8 @@ function loreqa_resolveApi(apiSel, model, base = loreqa_cfg) {
 }
 const loreqa_branchApi = () => loreqa_resolveApi(loreqa_cfg.branchApi, loreqa_cfg.branchModel);
 const loreqa_flowApi = () => loreqa_resolveApi(loreqa_cfg.flowApi, loreqa_cfg.flowModel);
+// 시간 점프 감지: 따로 정하지 않으면 전개모드 API
+const loreqa_jumpApi = () => (loreqa_cfg.jumpApi || String(loreqa_cfg.jumpModel || '').trim()) ? loreqa_resolveApi(loreqa_cfg.jumpApi, loreqa_cfg.jumpModel) : loreqa_flowApi();
 
 let loreqa_cfgBase = null;       // 모드 실행 중 원래 설정 (저장은 항상 이쪽으로)
 let loreqa_modeCaches = {};      // 모드별 1차/2차 캐시
@@ -2987,7 +2993,7 @@ function loreqa_buildTabs(p) {
     const [fl, fr] = split('flow', [], []);
     panes.flow.pane.classList.add('loreqa-pane-track');
     loreqa_buildFlowContent(fl, fr);
-    fr.appendChild(loreqa_promptSection(['pos', 'guard', 'guide', 'injPos', 'injGuard', 'guideRef', 'guideSteer', 'flowDoubt']));
+    fr.appendChild(loreqa_promptSection(['pos', 'guard', 'guide', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'guideRef', 'guideSteer', 'flowDoubt']));
     // 기본 · 프리셋: 원작 Q&A 공통 설정 포함
     // 공통 칸(원작 Q&A 공통, 캐릭터 & 보정, 1차 질의)은 모드별 설정으로 옮겨 갔으니 화면에서 뺀다
     p.secLore.remove(); p.secChar.remove(); p.secFirst.remove();
@@ -6786,6 +6792,18 @@ Output a plain list in {{language}}, one event per line starting with "- ". No p
     flowDoubt: { label: '전개 블록 경고 (검증 의심)', ph: [], locked: '전개모드의 검증 의심 지침을 켰을 때 위치·가드·가이드 블록 끝에 붙음',
         def: { ko: '※ 위 위치와 목록은 보조 모델이 원작 지식으로 만든 것이라 틀릴 수 있다. 지금까지의 이야기와 어긋나면 이야기를 따를 것.',
                en: '※ The position and lists above were produced by an assistant model from its knowledge of the original and may be wrong. Where they conflict with the story so far, follow the story.' } },
+    jump: { label: '시간 점프 감지', ph: [], locked: '입력: 현재 원작 시점, 직전 장면 끝, 이번 유저 입력. 답에 FORWARD / BACK / NONE 중 하나가 있어야 함',
+        def: { en: `You read the latest user input of an ongoing story and decide whether it moves the story's time compared with the end of the previous scene.
+FORWARD: the input skips ahead in story time: the next day or later (days, weeks, months, years later, the next season or school year, "after <event>", or an explicit later date).
+BACK: the story itself now continues at an earlier time than before (a flashback scene that is played out, time travel).
+NONE: the scene simply continues, only minutes or hours pass, or another time is only mentioned in dialogue, a plan, a memory or a dream.
+Answer with exactly one word: FORWARD, BACK or NONE.` } },
+    injJump: { label: '위치 블록 안내 (시간 점프)', ph: [], locked: '시간 점프 감지가 앞으로 건너뛴 턴에 위치·시점 가드 블록 끝에 붙음',
+        def: { ko: '※ 이번 입력에서 이야기 시간이 앞으로 건너뛰었다. 위 시점과 비밀 목록은 건너뛰기 전 기준이다. 그 사이 원작에서 지나갔을 일을 감안하되, 지금까지의 이야기와 어긋나면 이야기를 따를 것.',
+               en: '※ The latest input moves the story forward in time. The point and secrets above describe the moment before this jump. Allow for what the original would have moved past in between, but follow the story so far where they conflict.' } },
+    injJumpBack: { label: '위치 블록 안내 (과거 장면)', ph: [], locked: '시간 점프 감지가 과거 장면으로 판단한 턴에 위치·시점 가드 블록 끝에 붙음',
+        def: { ko: '※ 이번 입력은 이야기의 이전 시점을 다룬다. 위 시점과 비밀 목록은 그보다 뒤 기준이므로, 그 장면 시점에 아직 일어나지 않은 일을 인물이 알거나 언급하지 않게 할 것.',
+               en: '※ The latest input moves the story to an earlier time. The point and secrets above describe a later moment, so characters in that scene must not know or mention what has not happened yet at that time.' } },
     injDiv: { label: '분기 블록 안내', ph: [], locked: '맨 앞의 [Canon Divergences] 표식은 잠김. 이 문구 뒤에 분기 목록이 붙음',
         def: { ko: '이 이야기에서 원작과 달라진 확정 사실이다. 원작과 충돌하면 이쪽이 현재 사실이다. 직접 서술하거나 설명하지 말고 일관성을 지키는 데만 쓴다.',
                en: 'Confirmed facts in this story that differ from canon. Where they conflict with canon, these are the current truth. Do not narrate or explain them; use them only to stay consistent.' } },
@@ -7062,6 +7080,29 @@ async function loreqa_generateGuide(label, divergences) {
     } catch (e) { console.warn('[LoreQA] 서사 가이드 생성 실패:', e?.message || e); return ''; }
 }
 
+// 요청 직전: 이번 유저 입력이 이야기 시간을 건너뛰는지 가벼운 모델에 묻는다 (웹 검색 없음). 'forward' | 'back' | ''
+//   같은 입력의 재생성·재시도는 이전 결과를 다시 쓴다.
+let loreqa_jumpCache = { key: '', result: '' };
+async function loreqa_detectTimeJump(snap, label) {
+    const last = snap.list[snap.list.length - 1];
+    if (last?.role !== 'user') return ''; // 마지막이 유저 입력일 때만 (이어쓰기 등은 판단할 입력이 없음)
+    const input = scoutText(last).trim();
+    if (!input) return '';
+    const key = snap.scope + '|' + scoutHash(input);
+    if (loreqa_jumpCache.key === key) return loreqa_jumpCache.result;
+    const prev = [...snap.list.slice(0, -1)].reverse().find(m => ['char', 'assistant'].includes(m.role));
+    const system = loreqa_prompt('jump', {}, false);
+    const user = JSON.stringify({ current_point_in_canon: label || 'unknown', previous_scene_end: scoutText(prev).slice(-800), latest_user_input: input.slice(-3000) });
+    try {
+        const [bt, bp] = loreqa_jumpApi();
+        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true });
+        const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim().toUpperCase();
+        if (!raw) return ''; // 실패는 캐시하지 않는다
+        const result = /\bFORWARD\b/.test(raw) ? 'forward' : /\bBACK\b/.test(raw) ? 'back' : '';
+        loreqa_jumpCache = { key, result };
+        return result;
+    } catch (e) { console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return ''; }
+}
 // 요청 직전: 위치 신호 읽기 → (위치가 새로우면) 시점 가드 생성 → 분기 기록 읽기
 async function loreqa_prepareTurn() {
     const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], fixed: '', bucket: '_' };
@@ -7075,8 +7116,24 @@ async function loreqa_prepareTurn() {
     }
     if (!loreqa_flowOn('compPosition')) { loreqa_stageSet({ pos: '끔', guard: '끔' }); return t; }
     loreqa_stageSet({ pos: '⏳' });
-    const st = await loreqa_posLoad(t.scope);
+    let st = await loreqa_posLoad(t.scope);
     let dirty = false;
+    // 시간 점프 감지: 이번 유저 입력이 이야기 시간을 건너뛰면, 이번 턴은 낡은 서사 가이드를 빼고 위치 블록에 '점프 전 기준' 안내를 붙인다.
+    //   앞으로 건너뛰었으면 응답 뒤 판정 간격과 상관없이 위치를 다시 판정한다 (jumpWait면 지금 판정하고 기다림).
+    if (st.cur && loreqa_flowOn('jumpDetect')) {
+        loreqa_stageSet({ pos: '점프 확인 중' });
+        t.jump = await loreqa_detectTimeJump(snap, st.cur.label);
+        if (t.jump === 'forward' && st.cur.source !== 'manual') {
+            st.jumpPending = 1; await loreqa_posSave(t.scope, st);
+            if (Number(cfg.jumpWait) === 1) {
+                loreqa_stageSet({ pos: '점프 → 위치 판정 중' });
+                const r = await loreqa_posModelFallback(snap);
+                loreqa_posMsg = r?.status === 'set' ? `✓ 시간 점프 감지 → 위치 다시 판정 (${r.basis}): ${r.label}` : `시간 점프 감지 → 위치 판정: ${r?.note || r?.error || '변화 없음'}`;
+                st = await loreqa_posLoad(t.scope);
+                t.jump = ''; // 위치를 새로 판정했으니 '점프 전 기준' 안내와 가이드 생략은 필요 없다
+            }
+        }
+    }
     if (st.cur) {
         t.pos = st.cur; t.bucket = st.cur.key;
         const bucket = loreqa_posBucket(st, st.cur.key, st.cur.label);
@@ -7090,7 +7147,10 @@ async function loreqa_prepareTurn() {
             t.guard = bucket.secrets || '';
             loreqa_stageSet({ guard: t.guard ? '✓' : '✗' });
         } else loreqa_stageSet({ guard: '끔' });
-        if (loreqa_flowOn('compGuide')) {
+        if (loreqa_flowOn('compGuide') && t.jump) {
+            t.guide = ''; // 건너뛴 턴의 '다음 원작 사건'은 이미 지나갔거나 아직 먼 일이라 넣지 않는다
+            loreqa_stageSet({ guide: '점프로 생략' });
+        } else if (loreqa_flowOn('compGuide')) {
             const divN = t.divergences.length, n = Number(cfg.guideCount) || 3;
             // 위치가 새롭거나, 개수가 바뀌었거나, 가이드를 만든 뒤 분기가 새로 기록되었으면 다시 만든다
             if ((!bucket.guide || bucket.guideV !== LOREQA_GUIDE_V || bucket.guideN !== n || (bucket.guideDivN ?? -1) !== divN) && cfg.source) {
@@ -7130,8 +7190,9 @@ async function loreqa_posModelFallback(snap, force = false) {
     const day = (times[0] || '').match(/\d{3,4}-\d{2}-\d{2}/)?.[0] || '';
     if (!force) {
         if (st.cur?.source === 'manual') return { status: 'skip' };
-        // 극중 날짜가 있으면 날짜(일 단위)가 바뀔 때만, 없으면 판정 간격마다
-        if (day) { if (st.cur && st.lastDate === day) return { status: 'skip' }; }
+        // 극중 날짜가 있으면 날짜(일 단위)가 바뀔 때만, 없으면 판정 간격마다. 시간 점프가 감지된 턴(jumpPending)은 바로 판정
+        if (st.jumpPending) {}
+        else if (day) { if (st.cur && st.lastDate === day) return { status: 'skip' }; }
         else if (st.cur && replies - st.lastModelAt < Math.max(1, Number(loreqa_cfg.posModelEvery) || 8)) return { status: 'skip' };
     }
     // 극중 날짜가 있으면 RP 내용은 아예 보여 주지 않는다. 장면 내용을 보면 모델이 RP 사건과 비슷한 원작 대목으로 끌려간다.
@@ -7167,7 +7228,7 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         const idxLine = (lines.find(l => /^(\*\*)?index\s*[:：]/i.test(l)) || '').replace(/^(\*\*)?index\s*[:：]\s*(\*\*)?/i, '');
         const idxNums = idxLine.match(/\d+/g);
         const label = (lines.find(l => !/^(\*\*)?(source|confidence|index)\s*[:：]/i.test(l)) || '').replace(/^[\s"'*`#>\-]+|[\s"'*`]+$/g, '').replace(/^(label|answer|current point)\s*:\s*/i, '').slice(0, 200);
-        st.lastModelAt = replies;
+        st.lastModelAt = replies; delete st.jumpPending;
         if (day) st.lastDate = day;
         if (!label || /^unknown\.?$/i.test(label)) { await loreqa_posSave(snap.scope, st); return { status: 'unknown', raw, basis }; }
         // 저장 키는 모델이 따로 적은 번호(Index)를 우선한다. 위치 문장 표기가 매번 달라도 같은 위치로 묶이게.
@@ -8279,14 +8340,15 @@ function loreqa_manualEvent(e) {
 }
 async function loreqa_ledgerExport(scope) {
     const L = await scoutLedgerLoad(scope);
-    return { format: 'loreqacustom-ledger-v1', work: loreqa_cfg.source || '', exportedAt: new Date().toISOString(), events: L.events, excluded: L.excluded };
+    // hashes: 읽은 메시지들의 해시. 같은 대화로 가져오면 읽은 위치도 이어받는다
+    return { format: 'loreqacustom-ledger-v1', work: loreqa_cfg.source || '', exportedAt: new Date().toISOString(), events: L.events, excluded: L.excluded, hashes: L.hashes };
 }
 // replace: 기존 기록을 지우고 파일 기록으로 바꿈 / 아니면 합치기 (같은 id는 건너뜀).
 //   근거 인용이 이 채팅 메시지와 맞으면 근거째 넣고, 다른 채팅에서 온 기록은 근거를 떼고 직접 쓴 기록으로 넣는다
 //   (근거가 안 맞는 기록은 다음 읽기에서 지워지기 때문).
 async function loreqa_ledgerImport(scope, data, replace) {
     if (data?.format !== 'loreqacustom-ledger-v1' || !Array.isArray(data.events)) throw Error('분기 기록 JSON 형식이 아닙니다 (format: loreqacustom-ledger-v1).');
-    const r = { added: 0, withEvidence: 0, asManual: 0, skipped: 0 };
+    const r = { added: 0, withEvidence: 0, asManual: 0, skipped: 0, readFrom: 0, readTo: 0 };
     await scoutLedgerSerial(async () => {
         const snap = await scoutSnapshot(); if (snap.scope !== scope) throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');
         const msgs = scoutCompleted(snap), L = await scoutLedgerLoad(scope);
@@ -8306,6 +8368,14 @@ async function loreqa_ledgerImport(scope, data, replace) {
             L.events.push(e); r.added++;
             if (excluded.has(raw.id)) L.excluded.push(e.id);
         }
+        // 읽은 위치: 파일의 해시가 이 채팅 메시지와 앞에서부터 맞는 데까지는 이미 읽은 것으로 친다.
+        //   합치기는 더 앞선 쪽으로만 옮기고, 바꾸기는 파일 기준으로 맞춘다 (지운 기록 뒤를 다시 읽도록).
+        r.readFrom = L.hashes.length;
+        if (Array.isArray(data.hashes)) {
+            let k = 0; while (k < data.hashes.length && k < msgs.length && scoutHashMatch(data.hashes[k], msgs[k])) k++;
+            if (replace || k > L.hashes.length) { L.hashes = msgs.slice(0, k).map(scoutMessageHash); delete L.rescanPrev; }
+        } else if (replace) { L.hashes = []; delete L.rescanPrev; }
+        r.readTo = L.hashes.length;
         await scoutLedgerSave(L);
     });
     return r;
@@ -8320,7 +8390,6 @@ async function scoutLedgerPanel(){
     const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='직접 수정한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>e.edited);l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
     const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 직접 수정한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
-    scoutAddImportButton(box,scope,status);
     scoutLedgerLogButton(box,scope);
     // 버튼을 읽기 / 정리 / 기타 세 줄로 묶는다
     {
@@ -8329,7 +8398,6 @@ async function scoutLedgerPanel(){
         redo.textContent='처음부터 다시 읽기';redo.title='직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 새 기준으로 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';
         rescan.textContent='기록 두고 다시 훑기';rescan.title='지금 기록은 그대로 둔 채 처음부터 다시 읽어 빠진 것만 보탭니다.';
         tidy.title=tidy.title||'';undo.title=undo.title||'';
-        const imp=[...box.querySelectorAll(':scope > button')].find(b=>b.textContent.includes('불러오기'));if(imp){imp.textContent='인지 기록 불러오기';imp.title='원문 검증된 인지 기록 파일(JSON)을 원문과 대조해 넣습니다.';}
         const logBtn=[...box.querySelectorAll(':scope > button')].find(b=>b.textContent==='중대 분기 진단 로그'),logPane=logBtn?.nextElementSibling;if(logBtn)logBtn.textContent='진단 로그';
         const bar=document.createElement('div');bar.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-bottom:10px';
         const group=(label,els)=>{const l=document.createElement('span');l.textContent=label;l.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';const g=document.createElement('div');g.style.cssText='display:flex;flex-wrap:wrap;gap:6px';for(const el of els)if(el)g.appendChild(el);bar.append(l,g);};
@@ -8355,10 +8423,10 @@ async function scoutLedgerPanel(){
         const impBtn=(label,replace)=>{const b=document.createElement('button');b.textContent=label;
             b.title=replace?'지금 기록을 모두 지우고 파일의 기록으로 바꿉니다.':'지금 기록은 두고 파일의 기록을 더합니다. 같은 기록은 건너뜁니다.';
             b.onclick=()=>{if(replace&&!confirm('지금 분기 기록을 모두 지우고 파일의 기록으로 바꿉니다. 계속할까요?'))return;
-                loreqa_pickJson(async data=>{const r=await loreqa_ledgerImport(scope,data,replace);scoutLedgerStatus.set(scope,`JSON에서 ${r.added}개 가져옴 (근거 확인 ${r.withEvidence} · 근거 없이 직접 기록으로 ${r.asManual} · 건너뜀 ${r.skipped})`);await scoutLedgerPanel();},msg=>{status.textContent=msg;});};
+                loreqa_pickJson(async data=>{const r=await loreqa_ledgerImport(scope,data,replace);scoutLedgerStatus.set(scope,`JSON에서 ${r.added}개 가져옴 (근거 확인 ${r.withEvidence} · 근거 없이 직접 기록으로 ${r.asManual} · 건너뜀 ${r.skipped})`+(r.readTo!==r.readFrom?` · 읽은 위치 ${r.readFrom} → ${r.readTo}`:Array.isArray(data.hashes)?'':' · 이 파일에는 읽은 위치가 없어 그대로 둠 (시작 위치로 직접 옮길 수 있음)'));await scoutLedgerPanel();},msg=>{status.textContent=msg;});};
             return b;};
         group('JSON',[expBtn,impBtn('가져오기 (합치기)',false),impBtn('가져오기 (바꾸기)',true)]);
-        group('기타',[imp,logBtn]);
+        group('기타',[logBtn]);
         status.after(bar);
         if(logPane)bar.after(logPane);
     }
@@ -8864,6 +8932,7 @@ function loreqa_injectUnified(messages, t) {
     if (t.pos) {
         let c = LOREQA_POS_BLOCK + '\n' + loreqa_prompt('injPos', { position: t.pos.label }, ko);
         if (t.guard) c += '\n\n' + loreqa_prompt('injGuard', {}, ko) + '\n' + t.guard;
+        if (t.jump) c += '\n\n' + loreqa_prompt(t.jump === 'back' ? 'injJumpBack' : 'injJump', {}, ko);
         if (Number(loreqa_cfg.flowDoubt) === 1) c += '\n\n' + loreqa_prompt('flowDoubt', {}, ko);
         let i = 0; while (i < messages.length && messages[i].role === 'system') i++;
         messages.splice(i, 0, { role: 'system', content: c });
@@ -9056,6 +9125,9 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secSet,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
     loreqa_trkNum(secSet,'판정 참조 메시지','posReadMsgs',6,1,'위치 판정 때 읽을 최근 메시지 수 (유저·봇 각각 1개)');
     loreqa_trkNum(secSet,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
+    loreqa_trkToggle(secSet,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
+    loreqa_trkToggle(secSet,'jumpWait','점프 턴은 판정 기다리기','켜면 앞으로 건너뛴 턴은 위치 판정·시점 가드 생성이 끝난 뒤 메인 요청을 보냄. 그 턴만 수십 초 늦어지는 대신 같은 턴에 새 위치가 반영됨');
+    loreqa_trkApiRows(secSet,'jumpApi','jumpModel','시간 점프 감지에 쓸 API. 비우면 전개모드 API. 빠르고 싼 모델 권장.');
     loreqa_trkNum(secSet,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
     loreqa_trkNum(secSet,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
     loreqa_trkNum(secSet,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
@@ -9244,27 +9316,6 @@ if (globalThis.__pluginApis__ && globalThis.__pluginApis__.onUnload) {
 function scoutRecall(snap) {
   return continuityRecall(snap.history,snap.history.slice(-4).map(m=>m.text).join('\n'),snap.char.globalLore||snap.char.data?.globalLore||[],10000,[...snap.history].reverse().find(m=>m.role==='user')?.text||'');
 }
-async function scoutImportAnchors(value,scope) {
-  const snap=await scoutSnapshot();
-  if(snap.scope!==scope)throw Error('채팅이 바뀌었습니다.');
-  if(value?.format!=='canonscout-reviewed-anchors-v1'||value.sourceFirstChatId!==snap.list[0]?.chatId)throw Error('이 기록의 원본 채팅과 현재 채팅이 다릅니다.');
-  const messages=scoutCompleted(snap),events=scoutLedgerValidate(JSON.stringify({events:value.events}),messages,0,null);
-  // Every quote must still exist in this chat, including the character's own witnessed response.
-  await scoutLedgerSerial(async()=>{
-    const fresh=await scoutSnapshot();if(fresh.key!==snap.key)throw Error('불러오는 중 대화가 변경되었습니다.');
-    const ledger=await scoutLedgerLoad(scope);scoutLedgerReconcile(ledger,messages);
-    for(const e of events)if(!ledger.events.some(v=>v.id===e.id))ledger.events.push(e);
-    await scoutLedgerSave(ledger);
-  });
-  return events.length;
-}
-function scoutAddImportButton(box,scope,status) {
-  const input=document.createElement('input');input.type='file';input.accept='.json';input.style.display='none';
-  const button=document.createElement('button');button.textContent='원문 검증된 인지 기록 불러오기';button.onclick=()=>input.click();
-  input.onchange=async()=>{button.disabled=true;try{const file=input.files?.[0];if(!file)return;if(file.size>1000000)throw Error('기록 파일이 너무 큽니다.');const n=await scoutImportAnchors(JSON.parse(await file.text()),scope);status.textContent=n+'개 기록을 원문 대조 후 저장했습니다.';await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{button.disabled=false;input.value='';}};
-  box.appendChild(input);box.appendChild(button);
-}
-
 // Standalone PDF: rasterize Unicode text with browser fonts; no external dependency.
 async function scoutPdfEncode(text) {
     if (text.length > 300000) throw Error('PDF 본문이 30만 자를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
