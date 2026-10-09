@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.6
+//@version 3.2.7
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8380,6 +8380,9 @@ async function loreqa_mainRequest(messages, type) {
         // 같은 턴 내 재시도/재생성 — turnMarker 갱신 (혹시 미세하게 달라졌을 수도 있어 최신화)
         loreqa_cache.turnMarker = currentTurnMarker;
     }
+    // 이 요청이 쓸 캐시를 붙잡아 둔다. 1차·2차 API를 기다리는 동안 다른 요청(겹친 전송·재시도)이나
+    //   설정 변경이 전역 loreqa_cache 를 비우거나 바꿔도 이 요청은 끝까지 같은 객체를 쓴다.
+    const cache = loreqa_cache;
 
     // 연속 실패 서킷 브레이커 — throw 직전에 호출. true 반환 시 파이프라인 포기(무주입 통과).
     //   RisuAI 호스트의 throw→무한 재시도 루프와 결합해 "무한로딩" 이 되는 것을 차단한다.
@@ -8394,10 +8397,10 @@ async function loreqa_mainRequest(messages, type) {
         return false;
     };
 
-    if (loreqa_cache.state) {
+    if (cache.state) {
         // 이전 파이프라인 상태 복원 (partial일 수 있음)
-        console.log(`[LoreQA] 입력 캐시 적중 — 1차:${loreqa_cache.firstDone ? '스킵' : '실행'} / 2차:${loreqa_cache.verifyDone ? '스킵' : '실행'}`);
-        loreqa_state = structuredClone(loreqa_cache.state);
+        console.log(`[LoreQA] 입력 캐시 적중 — 1차:${cache.firstDone ? '스킵' : '실행'} / 2차:${cache.verifyDone ? '스킵' : '실행'}`);
+        loreqa_state = structuredClone(cache.state);
         loreqa_updateMcpPanel(loreqa_state.mcpText || '');
     } else {
         // 상태 초기화 (새 파이프라인 시작)
@@ -8450,7 +8453,7 @@ async function loreqa_mainRequest(messages, type) {
     }
 
     // ── 1차: 원작 설정 질의 (firstDone 미충족 시 실행) ──
-    if (!loreqa_cache.firstDone) {
+    if (!cache.firstDone) {
         const chatMessages = await loreqa_getChatMessages();
 
         console.log('[LoreQA] 1차 요청: 원작 설정 질의 중...');
@@ -8528,8 +8531,8 @@ async function loreqa_mainRequest(messages, type) {
         }
 
         // 1차(+파싱) 성공 — 스냅샷 기록. throw 전에 여기 도달하지 않으면 캐시 미반영 → 재시도 시 재실행.
-        loreqa_cache.firstDone = true;
-        loreqa_cache.state = structuredClone(loreqa_state);
+        cache.firstDone = true;
+        cache.state = structuredClone(loreqa_state);
         // 파이프라인 성공 → 연속 실패 스트릭 리셋
         loreqa_failStreak = { marker: null, count: 0 };
     }
@@ -8562,7 +8565,7 @@ async function loreqa_mainRequest(messages, type) {
 
     // ── 2차: 팩트체크 (loreMode>=2 & verifyDone 미충족 시 실행) ──
     // 1차가 캐시 히트여도 2차가 실패해 스냅샷 저장되지 않았으면 여기서 재시도됨.
-    if (loreMode >= 2 && !loreqa_cache.verifyDone) {
+    if (loreMode >= 2 && !cache.verifyDone) {
         console.log('[LoreQA] 2차 요청: 팩트체크 중...');
         const verifyPrompt = loreqa_augmentVerifyPrompt(loreqa_buildVerifyPrompt(source, loreqa_state.firstQ, loreqa_state.firstA, language, personaName, isOriginal, verifySearchLevel), loreCtx);
         const verify = loreqa_getVerifyProfile();
@@ -8579,8 +8582,8 @@ async function loreqa_mainRequest(messages, type) {
                 loreqa_state.corrections = verifyParsed.corrections;
                 console.log('[LoreQA] 2차 완료.');
                 // 2차 성공 — 스냅샷 갱신 (firstDone 상태 위에 verify 필드 덮어쓴 전체 상태)
-                loreqa_cache.verifyDone = true;
-                loreqa_cache.state = structuredClone(loreqa_state);
+                cache.verifyDone = true;
+                cache.state = structuredClone(loreqa_state);
             } else {
                 console.warn('[LoreQA] 2차 파싱 실패. 1차로 대체.');
                 loreqa_updateLorePanel('⚠ 2차 검증 파싱 실패 — 1차 결과로 대체\n\n[2차 원본 응답]\n' + verifyRaw);
