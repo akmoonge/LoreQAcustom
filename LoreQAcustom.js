@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.14
+//@version 3.2.15
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -211,6 +211,71 @@ const loreqa_storeSet = (name, value) => risuai.pluginStorage.setItem('loreqacus
 // 인메모리 설정 (startup 시 pluginStorage에서 로드)
 let loreqa_cfg = { ...LOREQA_DEFAULTS };
 
+// ── 사용 통계: 채팅 내용 없이 숫자만 모은다 (권장값을 정하기 위한 자료). 원클릭 세팅 탭에서 JSON으로 내보냄 ──
+//   c: 횟수 · 합계, t: 걸린 시간(ms) 합계와 횟수. 저장은 몇 초 모아서 한 번.
+let loreqa_stats = null, loreqa_statsTimer = null, loreqa_statsLoading = null;
+async function loreqa_statsLoad() {
+    if (loreqa_stats) return loreqa_stats;
+    if (!loreqa_statsLoading) loreqa_statsLoading = (async () => {
+        let v = null;
+        try { const raw = await loreqa_storeGet('stats'); v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null; } catch (e) {}
+        loreqa_stats = v && v.v === 1 && v.c && v.t ? v : { v: 1, since: new Date().toISOString(), c: {}, t: {} };
+        return loreqa_stats;
+    })();
+    return loreqa_statsLoading;
+}
+function loreqa_statsSave() {
+    clearTimeout(loreqa_statsTimer);
+    loreqa_statsTimer = setTimeout(() => { if (loreqa_stats) loreqa_storeSet('stats', JSON.stringify(loreqa_stats)).catch(() => {}); }, 4000);
+}
+// 횟수·양 더하기. 실패해도 본 기능에는 영향 없음
+function loreqa_stat(key, n = 1) {
+    if (!(Number(n) > 0) && n !== 0) return;
+    loreqa_statsLoad().then(s => { s.c[key] = (s.c[key] || 0) + Number(n); s.last = new Date().toISOString(); loreqa_statsSave(); }).catch(() => {});
+}
+function loreqa_statTime(key, ms) {
+    if (!(ms >= 0)) return;
+    loreqa_statsLoad().then(s => { const x = s.t[key] || (s.t[key] = { n: 0, ms: 0 }); x.n++; x.ms += Math.round(ms); loreqa_statsSave(); }).catch(() => {});
+}
+function loreqa_statUsage(prefix, usage) {
+    const u = loreqa_formatUsage(usage);
+    if (u) { loreqa_stat(prefix + '.inTok', u.input || 0); loreqa_stat(prefix + '.outTok', u.output || 0); }
+}
+// 내보낼 때 같이 넣는 설정 요약 (키 · 주소 · 모델 이름 · 작품명 · 채팅 내용 없음)
+function loreqa_statsSettings() {
+    const c = loreqa_cfg, mc = loreqa_ensureModeCfg(), pick = ks => Object.fromEntries(ks.map(k => [k, c[k]]));
+    return {
+        fameTier: c.fameTier || '', env: { ctx: c.envCtx, prompt: c.envPrompt, out: c.envOut, in: c.envIn, lang: c.envLang, rule: c.envRule || {} },
+        modes: pick(['modeChar', 'modeSet', 'modeBranch', 'modeFlow', 'instrOnly']),
+        sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'guideStrength', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
+        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'guideCount']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
+        qa: { char: { lore: mc.char.lore, search: mc.char.search, verifySearch: mc.char.verifySearch }, set: { lore: mc.set.lore, search: mc.set.search, verifySearch: mc.set.verifySearch } },
+        apiTypes: { main: c.apiType, branch: c.branchApi || '', flow: c.flowApi || '', jump: c.jumpApi || '', char: mc.char.modeApi || '', set: mc.set.modeApi || '' },
+    };
+}
+async function loreqa_statsExport() {
+    const s = await loreqa_statsLoad();
+    return { format: 'loreqacustom-stats-v1', exportedAt: new Date().toISOString(), since: s.since, last: s.last || '', counts: s.c, times: s.t, settings: loreqa_statsSettings(),
+        note: '채팅 내용, 작품명, API 키·주소·모델 이름은 들어 있지 않습니다. 횟수·토큰 수·걸린 시간과 설정값만 있습니다.' };
+}
+async function loreqa_statsReset() {
+    loreqa_stats = { v: 1, since: new Date().toISOString(), c: {}, t: {} }; loreqa_statsLoading = Promise.resolve(loreqa_stats);
+    await loreqa_storeSet('stats', JSON.stringify(loreqa_stats));
+}
+// 원클릭 세팅 탭: 사용 통계 카드
+function loreqa_buildQuickStats() {
+    const sec = loreqa_section('사용 통계');
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', '권장값(N턴 간격, 인지도 표, 계산 기준)을 실제 사용으로 다듬기 위한 숫자를 모읍니다: 위치 판정에서 위치가 바뀐 비율, 분기 묶음당 기록 수와 2차 검토가 더 찾은 수, 근거 불일치, 정리 결과, 시간 점프 감지 결과, 요청 시간·토큰 등. 채팅 내용, 작품명, API 키·주소·모델 이름은 들어가지 않습니다.'));
+    const info = loreqa_el('div', 'loreqa-muted'); info.style.marginTop = '6px';
+    loreqa_statsLoad().then(s => { const n = Object.values(s.c).length; info.textContent = `모으기 시작: ${String(s.since).slice(0, 10)} · 항목 ${n}개` + (s.last ? ` · 마지막 기록 ${String(s.last).slice(0, 16).replace('T', ' ')}` : ''); }).catch(() => {});
+    const btns = loreqa_el('div', 'loreqa-lore-buttons');
+    btns.append(
+        loreqa_btn('JSON 내보내기', async () => { try { const d = await loreqa_statsExport(); loreqa_downloadJson(`loreqa-stats-${new Date().toISOString().slice(0, 10)}.json`, d); info.textContent = '사용 통계를 JSON 파일로 내보냈습니다. 브라우저 다운로드 폴더를 확인하세요.'; } catch (e) { info.textContent = String(e?.message || e); } }),
+        loreqa_btn('초기화', async () => { if (!confirm('모은 사용 통계를 지우고 지금부터 다시 모을까요?')) return; await loreqa_statsReset(); info.textContent = '초기화했습니다. 지금부터 다시 모읍니다.'; }),
+    );
+    sec.append(info, btns);
+    return sec;
+}
 // 옛 메시지 단위 값(maxLogs·posReadMsgs, 모드별 maxLogs)을 턴 단위로. src 에 실제로 있던 값만 바꾼다
 function loreqa_toTurnUnit(o, src) {
     const half = v => Math.max(1, Math.ceil((Number(v) || 0) / 2));
@@ -641,7 +706,8 @@ async function loreqa_runModeQA(mode, charMode, messages, type) {
     loreqa_cache = loreqa_modeCaches[mode] || null;
     loreqa_state = loreqa_modeStates[mode] || { ...savedState, firstQ: null, firstA: null, verifyQ: null, verifyA: null, corrections: null, loreText: '' };
     loreqa_activeMode = mode;
-    try { return await loreqa_mainRequest(messages, type); }
+    const qaT0 = Date.now();
+    try { const r = await loreqa_mainRequest(messages, type); loreqa_stat('qa.' + mode); loreqa_statTime('qa.' + mode, Date.now() - qaT0); return r; }
     finally {
         loreqa_modeCaches[mode] = loreqa_cache;
         loreqa_modeStates[mode] = loreqa_state;
@@ -3248,7 +3314,7 @@ function loreqa_buildTabs(p) {
     instr.appendChild(loreqa_promptSection(['useContext', 'verify', 'qaRef', 'qaDoubt', 'augRepeat', 'augDiverge', 'augPos', 'augGuard', 'augQuiet', 'augVerify']));
     panes.instr.pane.appendChild(instr);
     // 원클릭 세팅
-    cols('quick', [loreqa_buildQuickFame()], [loreqa_buildQuickEnv()]);
+    cols('quick', [loreqa_buildQuickFame(), loreqa_buildQuickStats()], [loreqa_buildQuickEnv()]);
     // API · MCP
     cols('api', [p.secApi, p.secVerifyApi], [p.secMcp]);
     // 현황판
@@ -7331,13 +7397,16 @@ async function loreqa_detectTimeJump(snap, label) {
     const user = JSON.stringify({ current_point_in_canon: label || 'unknown', previous_scene_end: scoutText(prev).slice(-800), latest_user_input: input.slice(-3000) });
     try {
         const [bt, bp] = loreqa_jumpApi();
+        const t0 = Date.now();
         const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true });
+        loreqa_statTime('jump', Date.now() - t0); loreqa_statUsage('jump', out?.usage);
         const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim().toUpperCase();
-        if (!raw) return ''; // 실패는 캐시하지 않는다
+        if (!raw) { loreqa_stat('jump.fail'); return ''; } // 실패는 캐시하지 않는다
         const result = /\bFORWARD\b/.test(raw) ? 'forward' : /\bBACK\b/.test(raw) ? 'back' : '';
+        loreqa_stat('jump.' + (result || 'none'));
         loreqa_jumpCache = { key, result };
         return result;
-    } catch (e) { console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return ''; }
+    } catch (e) { loreqa_stat('jump.fail'); console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return ''; }
 }
 // 요청 직전: 위치 신호 읽기 → (위치가 새로우면) 시점 가드 생성 → 분기 기록 읽기
 async function loreqa_prepareTurn() {
@@ -7433,6 +7502,9 @@ async function loreqa_posModelFallback(snap, force = false) {
         else if (day) { if (st.cur && st.lastDate === day) return { status: 'skip' }; }
         else if (st.cur && replies - st.lastModelAt < Math.max(1, Number(loreqa_cfg.posModelEvery) || 8)) return { status: 'skip' };
     }
+    // 통계: 무엇 때문에 판정했는지 (지금 판정 / 첫 판정 / 시간 점프 / 날짜 변경 / 간격)
+    const why = force ? 'manual' : !st.cur ? 'first' : st.jumpPending ? 'jump' : day ? 'date' : 'interval', posT0 = Date.now();
+    loreqa_stat('pos.judge.' + why);
     // 극중 날짜가 있으면 RP 내용은 아예 보여 주지 않는다. 장면 내용을 보면 모델이 RP 사건과 비슷한 원작 대목으로 끌려간다.
     const lang = scoutLang();
     const med = loreqa_mediumRule();
@@ -7456,7 +7528,8 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         const [bt, bp] = loreqa_flowApi();
         const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
         const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim();
-        if (!raw) return { status: 'error', error: loreqa_state?.lastError || '보조 모델이 빈 응답을 돌려주었습니다.' };
+        loreqa_statTime('pos.judge', Date.now() - posT0); loreqa_statUsage('pos', out?.usage);
+        if (!raw) { loreqa_stat('pos.error'); return { status: 'error', error: loreqa_state?.lastError || '보조 모델이 빈 응답을 돌려주었습니다.' }; }
         const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
         const ref = (lines.find(l => /^(\*\*)?source\s*[:：]/i.test(l)) || '').replace(/^(\*\*)?source\s*[:：]\s*(\*\*)?/i, '').trim().slice(0, 200);
         if (['copilot', 'custom', 'ollama'].includes(loreqa_cfg.flowApi || loreqa_cfg.apiType)) basis += ' · 이 API는 서버 검색 미지원 — 기억 기반 추정';
@@ -7468,7 +7541,7 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         const label = (lines.find(l => !/^(\*\*)?(source|confidence|index)\s*[:：]/i.test(l)) || '').replace(/^[\s"'*`#>\-]+|[\s"'*`]+$/g, '').replace(/^(label|answer|current point)\s*:\s*/i, '').slice(0, 200);
         st.lastModelAt = replies; delete st.jumpPending;
         if (day) st.lastDate = day;
-        if (!label || /^unknown\.?$/i.test(label)) { await loreqa_posSave(snap.scope, st); return { status: 'unknown', raw, basis }; }
+        if (!label || /^unknown\.?$/i.test(label)) { loreqa_stat('pos.unknown'); await loreqa_posSave(snap.scope, st); return { status: 'unknown', raw, basis }; }
         // 저장 키는 모델이 따로 적은 번호(Index)를 우선한다. 위치 문장 표기가 매번 달라도 같은 위치로 묶이게.
         const clean = loreqa_posCleanLabel(label);
         const era = /^\s*pre\b/i.test(idxLine) ? 'pre' : /^\s*post\b/i.test(idxLine) ? 'post' : '';
@@ -7487,15 +7560,18 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
         const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] ?? 0, y = b[i] ?? 0; if (x !== y) return x < y ? -1 : 1; } return 0; };
         const was = ord(st.cur?.key), now = ord(key);
         if (!force && !st.rejudge && was && now && cmp(now, was) < 0) {
-            if (!st.backCand) { st.backCand = key; await loreqa_posSave(snap.scope, st); return { status: 'skip', basis, note: `새 판정(${clean})이 지금 위치보다 앞이라 한 번 보류함` }; }
+            if (!st.backCand) { loreqa_stat('pos.backHeld'); st.backCand = key; await loreqa_posSave(snap.scope, st); return { status: 'skip', basis, note: `새 판정(${clean})이 지금 위치보다 앞이라 한 번 보류함` }; }
         }
         delete st.backCand; delete st.rejudge;
+        // 통계: 판정 이유별로 위치가 실제로 바뀌었는지 (간격 권장값의 근거)
+        { const moved = st.cur?.key !== key; loreqa_stat((moved ? 'pos.changed.' : 'pos.same.') + why); if (moved && was && now && cmp(now, was) < 0) loreqa_stat('pos.movedBack'); }
         // 같은 위치면 키·메모·가드는 그대로 두고 표시용 정보만 갱신
         st.cur = { key, label: st.cur?.key === key ? st.cur.label : clean, source: 'model', at: st.cur?.key === key ? st.cur.at : Date.now(), ref, guess };
         await loreqa_posSave(snap.scope, st);
         return { status: 'set', label: clean + (guess ? ' (추정)' : ''), basis, ref };
     } catch (e) {
         console.warn('[LoreQA] 위치 판정 실패:', e?.message || e);
+        loreqa_stat('pos.error');
         return { status: 'error', error: e?.message || loreqa_state?.lastError || String(e) };
     }
 }
@@ -7533,6 +7609,7 @@ async function loreqa_ledgerCatchupRun() {
     return loreqa_ledgerCatchup;
 }
 function loreqa_afterTurnBackground() {
+    loreqa_stat('turns');
     setTimeout(async () => {
         if (!(await loreqa_isActiveNow())) return;
         let snap;
@@ -8153,6 +8230,7 @@ async function loreqa_inheritFromParent(char, chats, chat, scope) {
         notes.push('고정 변경 기록');
     }
     if (!notes.length) return;
+    loreqa_stat(how === '브랜치' ? 'inherit.branch' : 'inherit.copy');
     const msg = `${how}: 원본 채팅에서 ${notes.join(' · ')} 물려받음`;
     scoutLedgerStatus.set(scope, msg);
     if (rawP) loreqa_posMsg = msg;
@@ -8314,6 +8392,7 @@ function scoutLedgerReconcile(ledger,messages){
     const removed=valid.length!==ledger.events.length;ledger.events=valid;
     if(common===ledger.hashes.length)return removed;
     // Editing/deletion/reroll invalidates changed and downstream extractions; unaffected earlier events survive.
+    loreqa_stat('ledger.rewind');
     // 어디서 되감겼는지 남긴다: 앞쪽 메시지가 계속 바뀌어 매번 처음부터 읽게 되는 경우를 진단 로그로 잡기 위해.
     try{scoutLedgerLogAdd(ledger.scope,{time:new Date().toISOString(),status:`메시지 ${common}번이 저장 당시와 달라 그 뒤를 다시 읽음`,readBefore:ledger.hashes.length,rewoundTo:common,removedEvents:ledger.events.filter(e=>!e.evidence.every(v=>v.index<common)).length});scoutLedgerStatus.set(ledger.scope,`메시지 ${common}번이 바뀌어 그 뒤(${ledger.hashes.length-common}개)를 다시 읽습니다. 계속 반복되면 진단 로그를 확인하세요.`);}catch(_){}
     ledger.events=ledger.events.filter(e=>e.evidence.every(v=>v.index<common));
@@ -8429,7 +8508,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     let cored=0;
     const coreSet=new Map();
     for(const c of Array.isArray(v?.core)?v.core:[]){const r=c?.id;if(!evOf.has(r)||used.has(r)||evOf.get(r).edited)continue;coreSet.set(evOf.get(r).id,c.core===true||c.core==='true');}
-    if(!merges.length&&!drops.length&&!coreSet.size){entry.status='정리할 것 없음';ledger.sinceTidy=0;return {merged:0,dropped:0,cored:0};}
+    if(!merges.length&&!drops.length&&!coreSet.size){entry.status='정리할 것 없음';ledger.sinceTidy=0;loreqa_stat('tidy.run');loreqa_stat('tidy.nothing');loreqa_stat('tidy.recordsBefore',live.length);return {merged:0,dropped:0,cored:0};}
     // 되돌리기용 직전 장부
     await risuai.pluginStorage.setItem(scoutLedgerBackupKey(scope),JSON.stringify({time:new Date().toISOString(),ledger}));
     const dropIds=new Set(drops.map(d=>d.id)),mergeOf=new Map();
@@ -8445,6 +8524,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     ledger.excluded=ledger.excluded.filter(id=>next.some(e=>e.id===id));
     ledger.sinceTidy=0;ledger.lastTidy={time:new Date().toISOString(),merged:merges.length,mergedFrom:merges.reduce((n,m)=>n+m.from.length,0),dropped:drops.length,cored,drops};
     entry.status=`정리 완료: 합침 ${merges.length}건(원래 ${ledger.lastTidy.mergedFrom}건) · 지움 ${drops.length}건 · ★변경 ${cored}건`+(notes.length?' · '+notes.join(', '):'');
+    loreqa_stat('tidy.run');loreqa_stat('tidy.merged',merges.length);loreqa_stat('tidy.dropped',drops.length);loreqa_stat('tidy.cored',cored);loreqa_stat('tidy.recordsBefore',live.length);
     return {merged:merges.length,dropped:drops.length,cored};
 }
 async function scoutLedgerTidy(scope,reason='manual'){
@@ -8530,7 +8610,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         }
         // 읽은 구간의 메시지가 그대로인지만 본다. 그사이 새 메시지가 붙는 건 괜찮다. 바뀌었으면 이 묶음 결과만 버리고 다시 읽는다.
         if(await resync(end,'저장 전'))continue outer;
-        for(const event of events){const last=[...ledger.events].reverse().find(e=>e.entity===event.entity&&e.dimension===event.dimension);if(last?.after===event.after||ledger.events.some(e=>e.id===event.id))continue;ledger.events.push(event);ledger.sinceTidy=(ledger.sinceTidy||0)+1;}
+        for(const event of events){const last=[...ledger.events].reverse().find(e=>e.entity===event.entity&&e.dimension===event.dimension);if(last?.after===event.after||ledger.events.some(e=>e.id===event.id)){loreqa_stat('ledger.dupSkipped');continue;}ledger.events.push(event);ledger.sinceTidy=(ledger.sinceTidy||0)+1;loreqa_stat('ledger.added');if(event.core)loreqa_stat('ledger.addedCore');}
         ledger.hashes=messages.slice(0,end).map(scoutMessageHash);if(ledger.rescanPrev&&ledger.hashes.length>=ledger.rescanPrev.length)delete ledger.rescanPrev;await scoutLedgerSave(ledger);batches++;
         // 새 기록이 정해진 수만큼 쌓이면 장부를 정리한다. 실패해도 읽기는 계속.
         const every=Number(loreqa_cfg.ledgerTidyEvery)||0;
@@ -9689,6 +9769,7 @@ async function scoutLedgerExtractBatch(payload, batch, start, ledger, outputBudg
     const more=await scoutLedgerExtractRequest(auditPayload,batch,start,ledger,outputBudget);
     const combined=[...first];
     for(const event of more)if(!combined.some(e=>e.id===event.id||(e.entity===event.entity&&e.dimension===event.dimension&&e.after===event.after)))combined.push(event);
+    loreqa_stat('ledger.batch');loreqa_stat('ledger.batch.msgs',batch.length);loreqa_stat('ledger.found',first.length);loreqa_stat('ledger.auditAdded',combined.length-first.length);if(!combined.length)loreqa_stat('ledger.batch.empty');
     return combined;
 }
 async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBudget=8192) {
@@ -9700,6 +9781,7 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
         const [bt, bp] = loreqa_branchApi();
         const pdfOn = Number(loreqa_cfg.branchPdf) === 1;
         const response = await loreqa_callLLM(prompt, false, bt, bp, false, false, {ledgerJson:true,outputBudget,silent:true,pdf:pdfOn});
+        { const ph = payload.coverage_audit ? 'ledger.audit' : 'ledger.extract'; loreqa_stat(ph + '.req'); loreqa_statTime(ph, Date.now() - started); loreqa_statUsage(ph, response?.usage); if (attempt) loreqa_stat(ph + '.retry'); }
         const entry = {time:new Date().toISOString(), from:start, to:batch.at(-1)?.index, attempt:attempt+1, phase:payload.coverage_audit?'coverage_audit':'extract', elapsedMs:Date.now()-started, pdf:pdfOn, ...(response?.diagnostic || {}), usage:response?.usage || null, response:scoutLedgerLogText(response?.text || ''), status:'응답 수신'};
         scoutLedgerLogAdd(payload.scope, entry);
         if (!response?.text) {
@@ -9719,6 +9801,7 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
             const rejected=events.rejected||[];
             entry.events=events.length;
             if (rejected.length) entry.rejected=rejected;
+            loreqa_stat('ledger.evidenceRejected', rejected.length);
             entry.status=rejected.length?`검증 통과 · 근거 불일치 ${rejected.length}건 제외`:'검증 통과';
             if (!rejected.length) return kept ? merge(kept, events) : events;
             if (attempt === 1) return kept ? merge(kept, events) : events;

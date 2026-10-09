@@ -58,6 +58,11 @@ comments are Korean.
   위치 10k / 분기 묶음 12k); ledger read interval = min(batch, remembered turns / 3, helper window
   + maxGap 2), chosen from a 10-environment simulation. All ratios and tiers are guesses until
   usage data.
+- Usage stats (`loreqacustom_stats`, no chat text / work title / keys / model names):
+  `loreqa_stat(key, n)`, `loreqa_statTime(key, ms)`, `loreqa_statUsage(prefix, usage)`; hooks in
+  position judge (reason + changed/same), time-jump, ledger extract/audit/batch/added/rewind, tidy,
+  Q&A per mode, inheritance, turns. Exported from 원클릭 세팅 as `loreqacustom-stats-v1` with a
+  settings summary (`loreqa_statsSettings`). Add a stat when adding a feature whose default is a guess.
 - Every "턴" setting counts turns (user input + reply = 1 turn). `maxLogs` and `posReadMsgs` used
   to count messages; `turnUnit` marks converted configs/presets (`loreqa_toTurnUnit` halves old
   values once), and `loreqa_turnStart(list, n)` finds where the last n turns start.
