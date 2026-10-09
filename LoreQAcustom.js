@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.10
+//@version 3.2.11
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -20,6 +20,7 @@ const LOREQA_DEFAULTS = {
     onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
     onlyChatLabel: '', // 위 채팅의 표시용 이름
     source:   '',      // 작품명
+    fameTier: '',      // 작품 인지도 추천 세팅: major | semi | minor | niche ('' = 지정 안 함). LOREQA_FAME
     lore:     2,       // 0=사용안함, 1=1차만, 2=1차+2차검증, 3=MCP모드
     rewrite:  0,       // 0=끄기, 1=켜기
     original: 0,       // 0=원작 캐릭터, 1=오리지널 캐릭터
@@ -382,14 +383,67 @@ function loreqa_ensureModeCfg() {
     if (!Number(c.modeCfg.set.lore)) c.modeCfg.set.lore = 1;
     return c.modeCfg;
 }
+// ── 작품 인지도 추천 세팅 (원버튼) ──
+//   켜고 끄는 값만 바꾼다. 작품명 · API · 모델 · 지침 · 원작 Q&A 질의 설정 · 길이 상한 · 사용자 프리셋은 건드리지 않는다.
+//   실사용 데이터로 고칠 수 있게 표를 여기 한 곳에 모아 둔다.
+//   모드 단추와 분기·전개 서브 기능의 켜고 끄기만 다룬다. 원작 Q&A 질의 방식(1차/2차 검증)·웹 검색 같은 설정은 사용자 선택으로 둔다.
+const LOREQA_FAME = {
+    major: { label: '메이저', note: '모델이 원작을 잘 아는 작품. 세계관 질의는 끄고, 원작 연표가 정확하니 서사 가이드를 참고로 켭니다.',
+        base: { modeChar: 1, modeSet: 0, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, guideStrength: 0, jumpDetect: 1, flowDoubt: 0 } },
+    semi: { label: '준메이저', note: '모델이 대략은 아는 작품. 세계관 질의를 더합니다.',
+        base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, guideStrength: 0, jumpDetect: 1, flowDoubt: 0 } },
+    minor: { label: '마이너', note: '모델 지식이 얇은 작품. 없는 사건을 안내할 위험이 커서 서사 가이드를 끄고, 전개 블록에 "틀릴 수 있음" 경고를 붙입니다.',
+        base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 0, jumpDetect: 1, flowDoubt: 1 } },
+    niche: { label: '씹마이너', note: '웹에도 자료가 거의 없는 작품. 지침·자료 탭(추가 설정 자료)이나 저장 로어에 원작 자료를 넣어야 제대로 동작합니다. 위치 자동 판정이 자주 틀리니 전개모드 탭에서 직접 지정하는 걸 권하고, 시간 점프 감지도 끕니다.',
+        base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 0, jumpDetect: 0, flowDoubt: 1 } },
+};
+const LOREQA_FAME_LABELS = {
+    modeChar: '인물모드', modeSet: '세계관모드', instrOnly: '추가 지침만 모드', modeBranch: '분기모드', compLedger: '분기 추적', branchMainTier: '메인 분기 주입',
+    modeFlow: '전개모드', compPosition: '위치 추적', compGuard: '시점 가드', compGuide: '서사 가이드', guideStrength: '서사 가이드 강도', jumpDetect: '시간 점프 감지', flowDoubt: '전개 "틀릴 수 있음" 경고',
+    lore: '질의 방식', search: '1차 웹 검색', verifySearch: '2차 웹 검색', doubt: '"틀릴 수 있음" 경고',
+};
+function loreqa_fameValue(k, v) {
+    v = Number(v);
+    if (k === 'lore') return { 1: '1차만', 2: '1차 + 2차 검증', 3: 'MCP' }[v] || String(v);
+    if (k === 'branchMainTier') return { 0: '끔', 1: '★만', 2: '전부', 3: '★ 우선' }[v] || String(v);
+    if (k === 'guideStrength') return v === 1 ? '유도' : '참고만';
+    return v === 1 ? '켬' : '끔';
+}
+// 이 단계가 바꿀 항목 [{ where, key, from, to }]
+function loreqa_fameChanges(tier) {
+    const T = LOREQA_FAME[tier], c = loreqa_cfg, mc = loreqa_ensureModeCfg(), out = [];
+    for (const [k, v] of Object.entries(T.base)) if (Number(c[k] ?? LOREQA_DEFAULTS[k]) !== v) out.push({ where: '', key: k, from: c[k] ?? LOREQA_DEFAULTS[k], to: v });
+    for (const [m, label] of [['char', '인물'], ['set', '세계관']]) {
+        if (!T[m]) continue;
+        for (const [k, v] of Object.entries(T[m])) if (Number(mc[m][k]) !== v) out.push({ where: label, key: k, from: mc[m][k], to: v });
+    }
+    return out;
+}
+// 적용한 단계에서 사용자가 하나라도 바꿨으면 true
+const loreqa_fameDirty = () => !!LOREQA_FAME[loreqa_cfg.fameTier] && loreqa_fameChanges(loreqa_cfg.fameTier).length > 0;
+const loreqa_fameText = () => { const T = LOREQA_FAME[loreqa_cfg.fameTier]; return T ? T.label + (loreqa_fameDirty() ? ' (수정됨)' : '') : '지정 안 함'; };
+async function loreqa_applyFame(tier) {
+    const T = LOREQA_FAME[tier]; if (!T) return false;
+    const changes = loreqa_fameChanges(tier);
+    const list = changes.length ? changes.map(x => `· ${x.where ? x.where + ' ' : ''}${LOREQA_FAME_LABELS[x.key] || x.key}: ${loreqa_fameValue(x.key, x.from)} → ${loreqa_fameValue(x.key, x.to)}`).join('\n') : '(바뀌는 항목 없음)';
+    if (!confirm(`작품 인지도 "${T.label}" 추천 세팅\n\n${T.note}\n\n바뀌는 항목:\n${list}\n\n작품명·API·모델·지침·원작 Q&A 질의 설정(2차 검증·웹 검색)·길이 상한·프리셋은 그대로입니다. 적용할까요?`)) return false;
+    const mc = loreqa_ensureModeCfg();
+    Object.assign(loreqa_cfg, T.base);
+    for (const m of ['char', 'set']) if (T[m]) Object.assign(mc[m], T[m]);
+    loreqa_cfg.fameTier = tier;
+    loreqa_applyModes();
+    loreqa_cache = null; loreqa_modeCaches = {}; scoutCache = null;
+    await loreqa_saveConfig();
+    return true;
+}
 // 모드별 모델: API 종류는 API 탭에 키를 넣어 둔 프로필 중에서 고르고, 모델 이름만 덮어쓸 수 있다.
 const LOREQA_API_NAMES = { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Anthropic', copilot: 'Copilot', vertex: 'Vertex AI', custom: 'Custom', grok: 'Grok', ollama: 'Ollama', deepseek: 'DeepSeek', llmgateway: 'LLM Gateway' };
 function loreqa_apiReady(type) {
     const p = loreqa_cfg.apiProfiles?.[type];
     return !!p && !!(String(p.apiKey || '').trim() || String(p.serviceAccountJson || '').trim() || (type === 'custom' && String(p.apiEndpoint || '').trim()));
 }
-function loreqa_apiOptions(current) {
-    const opts = [{ value: '', label: `1차 API 그대로 (${LOREQA_API_NAMES[loreqa_cfg.apiType] || loreqa_cfg.apiType})` }];
+function loreqa_apiOptions(current, blankLabel) {
+    const opts = [{ value: '', label: blankLabel || `1차 API 그대로 (${LOREQA_API_NAMES[loreqa_cfg.apiType] || loreqa_cfg.apiType})` }];
     for (const [t, name] of Object.entries(LOREQA_API_NAMES)) if (loreqa_apiReady(t) || t === current) opts.push({ value: t, label: name + (loreqa_apiReady(t) ? '' : ' (키 없음)') });
     return opts;
 }
@@ -615,6 +669,11 @@ function loreqa_injectStyles() {
             font-size: 11px; font-weight: 600; color: #a6adc8;
             text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
         }
+        details.loreqa-fold > summary { cursor: pointer; list-style: none; margin-bottom: 0; }
+        details.loreqa-fold > summary::-webkit-details-marker { display: none; }
+        details.loreqa-fold > summary::before { content: '▸ '; }
+        details.loreqa-fold[open] > summary { margin-bottom: 8px; }
+        details.loreqa-fold[open] > summary::before { content: '▾ '; }
         .loreqa-row {
             display: flex; align-items: center; justify-content: space-between;
             min-height: 32px; gap: 8px;
@@ -1315,6 +1374,19 @@ async function loreqa_openSettingsWindow() {
     sourceRow.appendChild(sourceLbl);
     sourceRow.appendChild(sourceInput);
     secBasic.appendChild(sourceRow);
+
+    // 작품 인지도: 누르면 바뀔 항목을 보여 주고 확인 뒤 추천 세팅을 적용 (켜고 끄는 값만)
+    {
+        const wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
+        for (const [key, T] of Object.entries(LOREQA_FAME)) {
+            const b = document.createElement('button'); b.type = 'button'; b.className = 'loreqa-button'; b.style.minWidth = 'auto';
+            b.textContent = T.label + (loreqa_cfg.fameTier === key ? (loreqa_fameDirty() ? ' ●(수정됨)' : ' ●') : '');
+            b.title = T.note;
+            b.addEventListener('click', async () => { if (await loreqa_applyFame(key)) await loreqa_openSettingsWindow(); });
+            wrap.appendChild(b);
+        }
+        secBasic.appendChild(loreqa_createRow('작품 인지도', wrap, '누르면 그 단계에 맞게 모드와 분기·전개 서브 기능을 켜고 끄는 추천 세팅을, 바뀔 항목과 함께 보여 주고 적용. 원작 Q&A 질의 설정(2차 검증·웹 검색)·API·지침·길이 상한·프리셋은 그대로'));
+    }
 
     settingsPanel.appendChild(secBasic);
 
@@ -2739,6 +2811,12 @@ function loreqa_section(title) {
     const t = document.createElement('div'); t.className = 'loreqa-section-title'; t.textContent = title; sec.appendChild(t);
     return sec;
 }
+// 접는 칸: 숫자·상한처럼 자주 안 만지는 설정. 기본은 접힘
+function loreqa_foldSection(title) {
+    const sec = document.createElement('details'); sec.className = 'loreqa-section loreqa-fold';
+    const t = document.createElement('summary'); t.className = 'loreqa-section-title'; t.textContent = title; sec.appendChild(t);
+    return sec;
+}
 function loreqa_el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function loreqa_btn(text, onClick) { const b = loreqa_el('button', 'loreqa-button', text); b.type = 'button'; b.addEventListener('click', onClick); return b; }
 
@@ -2792,7 +2870,7 @@ function loreqa_modeSettingsSections(mode) {
     ], mc().ref, v => set('ref', parseInt(v))), '메인 모델에 붙일 사용법 안내'));
     vis();
 
-    const f = loreqa_section('1차 질의');
+    const f = loreqa_foldSection('세부 설정 (1차 질의)');
     f.appendChild(num('maxLogs', '참조 턴 수', '1차 질의가 읽을 최근 대화 수', 1));
     const lim = loreqa_el('div'); lim.style.cssText = 'display:flex;align-items:center;gap:8px;flex:0 0 auto;';
     const limN = loreqa_el('input', 'loreqa-input'); limN.type = 'number'; limN.min = '50'; limN.style.width = '80px'; limN.value = mc().limitLengthValue; limN.disabled = Number(mc().limitLength) !== 1;
@@ -2813,7 +2891,7 @@ function loreqa_modeSettingsSections(mode) {
     c.appendChild(tg('doubt', '검증 의심 지침', '메인 LLM에 "틀릴 수 있음" 경고'));
     c.appendChild(tg('persona', '페르소나 포함', '1차 질의에 페르소나 프롬프트 첨부'));
     c.appendChild(tg('authorNote', '작가의 노트 주입', '1차 질의에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)'));
-    return [mdl, q, f, c];
+    return [mdl, q, c, f];
 }
 
 
@@ -3048,6 +3126,7 @@ async function loreqa_renderBoard() {
         const d = loreqa_modeDiag[mode];
         rows.push([label, st, st.startsWith('켜짐') ? `${loreName[mcs[mode].lore] || '?'} · ${modelOf(mcs[mode])} · 마지막 결과 ${raw ? raw.length.toLocaleString() + '자' : '없음'}${d ? ' · 종료 ' + (d.finish || '?') : ''}` : '']);
     };
+    rows.push(['인지도', loreqa_fameText(), LOREQA_FAME[c.fameTier] ? '추천 세팅 · 기본·프리셋 탭에서 바꿈' : '기본·프리셋 탭에서 작품 인지도를 고르면 추천 세팅 적용']);
     qa('modeChar', '인물', 'char');
     qa('modeSet', '세계관', 'set');
     let snap = null; try { snap = await scoutSnapshot(); } catch (e) {}
@@ -9044,8 +9123,8 @@ function scoutSection(title){
 }
 // 원작 추적 화면 (왼쪽: 위치·분기 / 오른쪽: 추적 설정과 보조 기록)
 function loreqa_trkToggle(sec,key,label,sub){sec.appendChild(loreqa_createRow(label,loreqa_createToggle('canon-trk-'+key,Number(loreqa_cfg[key])===1,async v=>{loreqa_cfg[key]=v?1:0;await loreqa_saveConfig();}),sub));}
-function loreqa_trkApiRows(sec,apiKey,modelKey,sub){
-    sec.appendChild(loreqa_createRow('API',loreqa_createSelect('canon-trk-'+apiKey,loreqa_apiOptions(loreqa_cfg[apiKey]),loreqa_cfg[apiKey]||'',async v=>{loreqa_cfg[apiKey]=v;await loreqa_saveConfig();}),sub+' 키는 API 탭의 그 종류 프로필'));
+function loreqa_trkApiRows(sec,apiKey,modelKey,sub,blankLabel){
+    sec.appendChild(loreqa_createRow('API',loreqa_createSelect('canon-trk-'+apiKey,loreqa_apiOptions(loreqa_cfg[apiKey],blankLabel),loreqa_cfg[apiKey]||'',async v=>{loreqa_cfg[apiKey]=v;await loreqa_saveConfig();}),sub+' 키는 API 탭의 그 종류 프로필'));
     const m=document.createElement('input');m.className='loreqa-input';m.placeholder='비우면 프로필의 모델';m.value=loreqa_cfg[modelKey]||'';
     let t=null;m.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(async()=>{loreqa_cfg[modelKey]=m.value.trim();await loreqa_saveConfig();},300);});
     sec.appendChild(loreqa_createRow('모델 이름',m,'비우면 프로필의 모델'));
@@ -9070,24 +9149,29 @@ function loreqa_buildBranchContent(left,right){
     factsSave.onclick=async()=>{const scope=facts.dataset.scope;if(!scope)return;if((await scoutSnapshot().catch(()=>null))?.scope!==scope){factsNote.textContent='채팅이 바뀌었습니다. 창을 다시 열어 주세요.';return;}loreqa_cfg.scoutFactsByScope={...(loreqa_cfg.scoutFactsByScope||{}),[scope]:facts.value};await loreqa_saveConfig();factsSave.textContent='저장됨!';setTimeout(()=>{factsSave.textContent='저장';},1200);};
     factsBtns.appendChild(factsSave);factsSec.append(factsNote,facts,factsBtns);left.appendChild(factsSec);
 
+    // 자주 만지는 것 → 모델·첨부 → 접힌 세부(숫자·상한) 순서
     const secSet=scoutSection('분기 설정');
     loreqa_trkToggle(secSet,'compLedger','분기 추적','응답 후 원작과 달라진 사건을 기록');
     loreqa_trkToggle(secSet,'branchOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC. OC 행동이 만든 변화를 분기로 인정');
-    loreqa_trkToggle(secSet,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀');
     secSet.appendChild(loreqa_createRow('메인 모델 주입',loreqa_createSelect('canon-trk-branchMainTier',[{value:'3',label:'★ 우선 + 남는 만큼'},{value:'1',label:'핵심만'},{value:'2',label:'전부'},{value:'0',label:'끔'}],String(loreqa_cfg.branchMainTier??3),async v=>{loreqa_cfg.branchMainTier=Number(v);await loreqa_saveConfig();}),'보조 모델(인물·세계관 Q&A, 시점 가드·서사 가이드)에는 항상 전부. 메인 본문 요청에는 ★ 우선 + 남는 만큼(★를 먼저 다 넣고 "메인 분기 블록 글자 수" 안에서 나머지를 최신부터 채움, 권장) / ★핵심 기록만 / 전부(넘치면 오래된 것부터 빠짐) / 안 넣음'));
-    loreqa_trkNum(secSet,'자동 읽기 간격 (턴)','ledgerEvery',1,1,'응답 뒤 분기 장부를 몇 턴마다 읽을지. 1이면 매 턴, 3이면 안 읽은 대화가 3턴 쌓였을 때 한꺼번에. 전체 읽기 버튼은 간격과 상관없이 바로 읽음');
-    loreqa_trkNum(secSet,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
-    loreqa_trkNum(secSet,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
-    loreqa_trkNum(secSet,'장부 자동 정리','ledgerTidyEvery',8,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능)');
-    loreqa_trkNum(secSet,'고정 변경 기록 글자 수','fixedChars',3000,0,'고정 변경 기록을 이만큼까지 주입. 넘는 뒷부분은 안 들어감. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'메인 분기 블록 글자 수','divMainChars',6000,0,'메인 본문 요청에 넣는 분기 기록 목록 길이 (고정 변경 기록은 따로). 넘는 기록은 빠짐. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'보조 분기 블록 글자 수','divHelperChars',12000,0,'인물·세계관 Q&A에 넣는 분기 기록 목록 길이. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'보조 모델 분기 기록 수','helperDivMax',60,0,'인물·세계관 Q&A, 시점 가드·서사 가이드에 넘기는 최신 분기 상태 수. 0이면 전부');
     loreqa_trkToggle(secSet,'inheritBranch','브랜치 · 복사본 이어받기','Risu에서 브랜치를 따거나 채팅을 복사하면, 새 채팅에 기록이 없을 때 원본 채팅의 분기 기록(분기점 앞까지) · 전개 위치 · 위치별 메모 · 고정 변경 기록을 한 번 복사. 원본이 분기점보다 더 진행했으면 위치는 다시 판정');
-    loreqa_trkToggle(secSet,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
-    loreqa_trkToggle(secSet,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
-    loreqa_trkApiRows(secSet,'branchApi','branchModel','분기 추출에 쓸 API.');
     right.appendChild(secSet);
+    const secModel=scoutSection('모델 · 첨부');
+    loreqa_trkApiRows(secModel,'branchApi','branchModel','분기 추출에 쓸 API.');
+    loreqa_trkToggle(secModel,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀');
+    loreqa_trkToggle(secModel,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
+    loreqa_trkToggle(secModel,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
+    right.appendChild(secModel);
+    const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
+    loreqa_trkNum(secMore,'자동 읽기 간격 (턴)','ledgerEvery',1,1,'응답 뒤 분기 장부를 몇 턴마다 읽을지. 1이면 매 턴, 3이면 안 읽은 대화가 3턴 쌓였을 때 한꺼번에. 전체 읽기 버튼은 간격과 상관없이 바로 읽음');
+    loreqa_trkNum(secMore,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
+    loreqa_trkNum(secMore,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
+    loreqa_trkNum(secMore,'장부 자동 정리','ledgerTidyEvery',8,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능)');
+    loreqa_trkNum(secMore,'고정 변경 기록 글자 수','fixedChars',3000,0,'고정 변경 기록을 이만큼까지 주입. 넘는 뒷부분은 안 들어감. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'메인 분기 블록 글자 수','divMainChars',6000,0,'메인 본문 요청에 넣는 분기 기록 목록 길이 (고정 변경 기록은 따로). 넘는 기록은 빠짐. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'보조 분기 블록 글자 수','divHelperChars',12000,0,'인물·세계관 Q&A에 넣는 분기 기록 목록 길이. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'보조 모델 분기 기록 수','helperDivMax',60,0,'인물·세계관 Q&A, 시점 가드·서사 가이드에 넘기는 최신 분기 상태 수. 0이면 전부');
+    right.appendChild(secMore);
 }
 
 // 전개모드: 위치 · 시점 가드 · 서사 가이드
@@ -9112,6 +9196,7 @@ function loreqa_buildFlowContent(left,right){
     const qaSec=scoutSection('위치별 원작 메모');
     const qaStore=document.createElement('div');qaStore.id='loreqa-qa-store';qaSec.appendChild(qaStore);left.appendChild(qaSec);
 
+    // 자주 만지는 것 → 시간 점프 → 모델·검색 → 캐릭터 & 보정 → 접힌 세부(숫자·상한) 순서
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
     loreqa_trkToggle(secSet,'compGuard','시점 가드','그 시점에 이미 존재하는 비밀과 모르는 인물을 주입');
@@ -9123,39 +9208,43 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secSet,'가이드 사건 수','guideCount',3,1,'현재 위치 다음의 원작 사건 몇 개까지 (최대 10)');
     const guideCountRow=secSet.lastElementChild;guideCountRow.style.display=guideNow>0?'':'none';
     secSet.appendChild(loreqa_createRow('원작 매체',loreqa_createSelect('canon-trk-medium',Object.entries(LOREQA_MEDIA).map(([value,m])=>({value,label:m.label})),loreqa_cfg.canonMedium||'auto',async v=>{loreqa_cfg.canonMedium=v;await loreqa_saveConfig();}),'위치를 어느 매체의 번호로 셀지. 원작 만화와 애니처럼 번호가 다를 때 중요'));
-    loreqa_trkNum(secSet,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
-    loreqa_trkNum(secSet,'판정 참조 메시지','posReadMsgs',6,1,'위치 판정 때 읽을 최근 메시지 수 (유저·봇 각각 1개)');
-    loreqa_trkNum(secSet,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
-    loreqa_trkToggle(secSet,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
-    loreqa_trkToggle(secSet,'jumpWait','점프 턴은 판정 기다리기','켜면 앞으로 건너뛴 턴은 위치 판정·시점 가드 생성이 끝난 뒤 메인 요청을 보냄. 그 턴만 수십 초 늦어지는 대신 같은 턴에 새 위치가 반영됨');
-    loreqa_trkApiRows(secSet,'jumpApi','jumpModel','시간 점프 감지에 쓸 API. 비우면 전개모드 API. 빠르고 싼 모델 권장.');
-    loreqa_trkNum(secSet,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
-    loreqa_trkNum(secSet,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
-    loreqa_trkToggle(secSet,'flowSearch','웹 검색','위치 판정·시점 가드·서사 가이드에 웹 검색 사용. 끄면 모델 기억으로 추정');
-    loreqa_trkToggle(secSet,'flowPdf','PDF 전송','위치 판정·시점 가드·서사 가이드를 PDF로 전송. PDF 입력 지원 모델만');
+    const secJump=scoutSection('시간 점프');
+    loreqa_trkToggle(secJump,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
+    loreqa_trkToggle(secJump,'jumpWait','점프 턴은 판정 기다리기','켜면 앞으로 건너뛴 턴은 위치 판정·시점 가드 생성이 끝난 뒤 메인 요청을 보냄. 그 턴만 수십 초 늦어지는 대신 같은 턴에 새 위치가 반영됨');
+    loreqa_trkApiRows(secJump,'jumpApi','jumpModel','시간 점프 감지에 쓸 API. 비우면 전개모드 API. 빠르고 싼 모델 권장.','전개모드 API 그대로');
+    const secModel=scoutSection('모델 · 검색');
+    loreqa_trkApiRows(secModel,'flowApi','flowModel','위치 판정·시점 가드·서사 가이드에 쓸 API.');
+    loreqa_trkToggle(secModel,'flowSearch','웹 검색','위치 판정·시점 가드·서사 가이드에 웹 검색 사용. 끄면 모델 기억으로 추정');
+    loreqa_trkToggle(secModel,'flowPdf','PDF 전송','위치 판정·시점 가드·서사 가이드를 PDF로 전송. PDF 입력 지원 모델만');
     const charSec=scoutSection('캐릭터 & 보정 (전개)');
     loreqa_trkToggle(charSec,'flowOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC');
     loreqa_trkToggle(charSec,'flowDoubt','검증 의심 지침','위치·가드·가이드 블록에 "틀릴 수 있음" 경고');
     loreqa_trkToggle(charSec,'flowPersona','페르소나 포함','위치 판정·가드·가이드에 페르소나 첨부');
     loreqa_trkToggle(charSec,'flowAuthorNote','작가의 노트 주입','위치 판정·가드·가이드에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)');
-    loreqa_trkNum(charSec,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
-    loreqa_trkApiRows(secSet,'flowApi','flowModel','위치 판정·시점 가드·서사 가이드에 쓸 API.');
-    right.appendChild(secSet);
-    right.appendChild(charSec);
+    const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
+    loreqa_trkNum(secMore,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
+    loreqa_trkNum(secMore,'판정 참조 메시지','posReadMsgs',6,1,'위치 판정 때 읽을 최근 메시지 수 (유저·봇 각각 1개)');
+    loreqa_trkNum(secMore,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
+    loreqa_trkNum(secMore,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
+    right.append(secSet,secJump,secModel,charSec,secMore);
 
     const briefSec=scoutSection('원작 브리핑 (참고용 · 주입 안 됨)');
     const briefBtns=document.createElement('div');briefBtns.className='loreqa-lore-buttons';
     const briefBtn=document.createElement('button');briefBtn.textContent='브리핑 생성';
     briefBtn.onclick=async()=>{briefBtn.disabled=true;try{await scoutRun(true);}finally{briefBtn.disabled=false;}};
     briefBtns.appendChild(briefBtn);
-    loreqa_trkNum(briefSec,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
-    loreqa_trkNum(briefSec,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
+    const briefMore=document.createElement('details');briefMore.className='loreqa-fold';briefMore.style.marginTop='6px';
+    {const sm=document.createElement('summary');sm.className='loreqa-section-title';sm.textContent='세부 설정';briefMore.appendChild(sm);}
+    loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
+    loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
-    briefSec.append(briefBtns,pre);right.appendChild(briefSec);
+    briefSec.append(briefBtns,briefMore,pre);right.appendChild(briefSec);
 }
 // (구 원작 추적 창 호환)
 function loreqa_buildTrackContent(left,right){loreqa_buildFlowContent(left,right);loreqa_buildBranchContent(left,right);}

@@ -48,6 +48,12 @@ comments are Korean.
 - Modes / header chips: 인물 (char), 세계관 (set), 분기 (branch = divergence ledger),
   전개 (flow = position + 시점 가드 + 서사 가이드). Tabs: 현황판 / 인물모드 / 세계관모드 /
   분기모드 / 전개모드 / 기본·프리셋 / 지침·자료 / API·MCP.
+- 작품 인지도 one-button presets: `LOREQA_FAME` (major / semi / minor / niche) is the single table
+  of on/off values (base keys + per-mode `char`/`set` cfg); `loreqa_applyFame` shows the diff and
+  applies; `fameTier` + `loreqa_fameDirty` show "(수정됨)". Values are guesses until usage data.
+- Settings UI layout in each mode tab: frequently used toggles first, then small topic sections
+  (모델 · 검색/첨부, 캐릭터 & 보정, 시간 점프), and numbers / caps last in a collapsed
+  `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold.
 - Editable prompts: `LOREQA_PROMPTS` + `loreqa_prompt(key, vars)`. A user-saved prompt
   overrides the default, so default changes only reach users who press "기본값으로".
 
