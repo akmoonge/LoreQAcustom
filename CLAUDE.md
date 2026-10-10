@@ -123,6 +123,9 @@ comments are Korean.
   INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
   original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
   wording ("if no specific fact is broken, use ''") left every relationship record empty.
+- NAMES (locked, extract + tidy): one spelling/script per person, copied from the ledger or as the story writes it,
+  never romanized; dimensions in the record language (the English "relationship with <name>" template produced
+  "knowledge of Sayo" next to 「小夜」).
 - Prompt examples use [bracketed placeholders], never a real work's names or titles (they were Harry Potter): when the
   user runs that work, the model copies the example into the ledger / labels without evidence.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
