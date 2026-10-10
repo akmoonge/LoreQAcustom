@@ -62,7 +62,8 @@ comments are Korean.
   from `requestOptions.step`, else inferred) and calls `loreqa_callLLMRaw`. Cards are drawn into
   Risu's main page via `risuai.getRootDocument()` (`.loreqa-float`, fixed, pointer-events none),
   like provider-manager's floating window. No streaming: running time, then output / thinking
-  tokens and t/s. Settings `floatOn`, `floatPos`. Pass `step:` when adding a new helper call.
+  tokens and t/s. Settings `floatOn`, `floatPos` (default bottom-right: Yumi Provider Manager uses
+  top-right). Pass `step:` when adding a new helper call.
 - Usage stats (`loreqacustom_stats`, no chat text / work title / keys / model names):
   `loreqa_stat(key, n)`, `loreqa_statTime(key, ms)`, `loreqa_statUsage(prefix, usage)`; hooks in
   position judge (reason + changed/same), time-jump, ledger extract/audit/batch/added/rewind, tidy,
@@ -90,6 +91,12 @@ comments are Korean.
   chat's history would get wrong, that is still a current state, and that involves at
   least one canon character / group / place / event. No OC–OC-only records, no canon
   events with the same outcome, no trips/meals/"was present", no in-progress states.
+- `SCOUT_LEDGER_KEEP_TRUE` (in the locked part, so customised gate prompts get it too): a new
+  message that ends / reverses a state already in the ledger must update that same entity +
+  dimension, overriding the gate (joining a group passed as "side or group" but leaving was
+  filtered as "travel", leaving a false record). `SCOUT_TIDY_LOCKED` has the same rule for tidy.
+  OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
+  that is long-term memory's job, not the divergence ledger's.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
   latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
@@ -113,14 +120,20 @@ comments are Korean.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
 - 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
-  web search): `[PUBLIC]` lines (who is where doing what now) go in the `[Canon Guide]` block as
-  off-screen world state, not "next events" (old event lists dragged canon into the OC's scene);
-  `[HIDDEN]` lines are secrets. Stored as `byPos[key].world` {raw,pub,hidden,v,n,divN}; regenerated
-  on position / ledger-count / `worldCount` change. 시점 가드 = `loreqa_pickSceneSecrets` picks up
-  to `sceneSecretMax` hidden lines for the current scene (jump API, no search; skipped when few),
-  stored as `byPos[key].scene` {gen,w,picks}; re-picked when `st.sceneGen` bumps (time-jump
-  detector now answers time + SAME/NEW scene) or the table changes. Old `guard`/`guide` prompts
-  and `secrets`/`guide` fields are unused.
+  web search, reads no chat turns, only position + ledger): `[PUBLIC]` = what ORIGINAL characters /
+  factions are doing now (never the story's own characters' whereabouts: those change scene by
+  scene), `[HIDDEN]` = one-line secrets, `[BEATS]` = next original events as
+  "event / needs: condition" (+ "(broken: …)"). Stored as `byPos[key].world` {raw,pub,hidden,beats,v,n,nb,
+  divN}; regenerated on position / ledger-count / `worldCount` / `beatCount` change.
+- 장면 판단 (`loreqa_judgeScene`, prompt `sceneJudge`, 전개모드 API with its profile reasoning, no search,
+  last `sceneTurns` turns) runs when `st.sceneGen` bumps (time-jump detector answers time + SAME/NEW),
+  the table changes, or every `sceneTurns` replies if jump detection is off. One call returns PLACE,
+  PRESENT, SECRETS (≤ `sceneSecretMax` → 시점 가드), READY / NEAR beats and DONE beats. Stored as
+  `byPos[key].scene`; DONE beats go to `byPos[key].played` (canon-as-written events never reach the
+  ledger) and are excluded from later judgments and regeneration. Skipped when nothing to choose.
+- 원작 흐름 (`canonStance`: follow / canon / balance / change / free; off = `compGuide` 0) picks the
+  stance prompt in the `[Canon Guide]` block; only READY beats are injected (follow also NEAR and broken
+  beats). Beats whose conditions don't hold are never given to the main model: it would pull them in.
 - JSON: `loreqa_posExport/Import` (`loreqacustom-position-v1`: `cur` + `byPos`); import sets
   `guideDivN` to this chat's count so the imported guide is not regenerated at once.
 

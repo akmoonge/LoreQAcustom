@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.17
+//@version 3.2.18
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -16,7 +16,8 @@ const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
     active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
     floatOn: 1,        // 진행 상황 창 (보조 호출마다 단계 · 시간 · 토큰)
-    floatPos: 'tr',    // 진행 상황 창 위치: tr | br | tl | bl
+    floatPos: 'br',    // 진행 상황 창 위치: tr | br | tl | bl (오른쪽 위는 Yumi Provider Manager 창 자리)
+    floatPosV: 1,      // 1 = 위치 기본값을 오른쪽 아래로 옮긴 뒤
     activePrev: 1,     // 머리의 '전체 ON/OFF'로 끄기 전 active 값 (다시 켤 때 복원)
     onlyCharName: '',  // active=3 ('현재 봇에서만') 에 바인딩된 캐릭터 이름
     onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
@@ -82,8 +83,11 @@ const LOREQA_DEFAULTS = {
     jumpReasoning: 'low', // 시간 점프 감지 추론 수준: low | minimal | '' (모델 기본) | medium | high | profile (API 프로필 설정 그대로)
     guideCount: 3,     // (구버전) 서사 가이드 사건 수. 세계 상태표로 바뀐 뒤로는 쓰지 않음
     worldCount: 8,     // 세계 상태표의 공개 상태 줄 수 (주요 인물·세력)
+    beatCount: 5,      // 세계 상태표의 원작 비트 수 (조건 붙은 다음 원작 사건)
+    sceneTurns: 3,     // 장면 판단이 읽을 최근 턴 수 (원클릭 세팅 계산기로도 정함)
+    canonStance: 'balance', // 원작 흐름 성향: follow | canon | balance | change | free (끔은 compGuide=0)
     sceneSecretMax: 4, // 시점 가드: 장면마다 고르는 숨은 상태 수
-    guideStrength: 0,  // 0=참고만, 1=그 방향으로 유도
+    guideStrength: 0,  // (구버전) 0=참고만, 1=유도. canonStance 로 바뀜 (참고만 → 균형, 유도 → 원작 우선)
     flowMigrated: 0,
     instrOnly:  0,     // 기본 지시문 없이 1차 추가 지침만으로 Q&A (기존 '지침 없음' 모드)
     savedLoreMigrated: 0,
@@ -252,8 +256,8 @@ function loreqa_statsSettings() {
     return {
         fameTier: c.fameTier || '', env: { ctx: c.envCtx, prompt: c.envPrompt, out: c.envOut, in: c.envIn, lang: c.envLang, rule: c.envRule || {} },
         modes: pick(['modeChar', 'modeSet', 'modeBranch', 'modeFlow', 'instrOnly']),
-        sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'guideStrength', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
-        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'sceneSecretMax']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
+        sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'canonStance', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
+        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'beatCount', 'sceneTurns', 'sceneSecretMax']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
         qa: { char: { lore: mc.char.lore, search: mc.char.search, verifySearch: mc.char.verifySearch }, set: { lore: mc.set.lore, search: mc.set.search, verifySearch: mc.set.verifySearch } },
         apiTypes: { main: c.apiType, branch: c.branchApi || '', flow: c.flowApi || '', jump: c.jumpApi || '', char: mc.char.modeApi || '', set: mc.set.modeApi || '' },
     };
@@ -302,6 +306,10 @@ async function loreqa_loadConfig() {
             loreqa_cfg = { ...LOREQA_DEFAULTS, ...parsed };
             // 턴 단위 통일: 예전 '참조 턴 수'·'판정 참조 메시지'는 메시지 수였다. 같은 양을 읽도록 한 번 반으로 바꾼다
             if (!('turnUnit' in parsed)) { loreqa_toTurnUnit(loreqa_cfg, parsed); loreqa_cfg.turnUnit = 1; }
+            // 서사 가이드 강도(참고만 / 유도)를 원작 흐름 성향으로: 참고만 → 균형, 유도 → 원작 우선
+            // 진행 상황 창이 Yumi Provider Manager 창(오른쪽 위)을 가리지 않게, 3.2.17 기본값(오른쪽 위)을 한 번 오른쪽 아래로
+            if (!('floatPosV' in parsed)) { if (!parsed.floatPos || parsed.floatPos === 'tr') loreqa_cfg.floatPos = 'br'; loreqa_cfg.floatPosV = 1; }
+            if (!('canonStance' in parsed)) loreqa_cfg.canonStance = Number(parsed.guideStrength) === 1 ? 'canon' : 'balance';
             // apiProfiles가 없거나 부분적인 경우 기본값 병합
             if (!loreqa_cfg.apiProfiles || typeof loreqa_cfg.apiProfiles !== 'object') {
                 loreqa_cfg.apiProfiles = { ...LOREQA_DEFAULTS.apiProfiles };
@@ -435,7 +443,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'floatPosV', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -478,10 +486,10 @@ function loreqa_ensureModeCfg() {
 //   실사용 데이터로 고칠 수 있게 표를 여기 한 곳에 모아 둔다.
 //   모드 단추와 분기·전개 서브 기능의 켜고 끄기만 다룬다. 원작 Q&A 질의 방식(1차/2차 검증)·웹 검색 같은 설정은 사용자 선택으로 둔다.
 const LOREQA_FAME = {
-    major: { label: '메이저', note: '모델이 원작을 잘 아는 작품. 세계관 질의는 끄고, 원작 연표가 정확하니 서사 가이드를 참고로 켭니다.',
-        base: { modeChar: 1, modeSet: 0, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, guideStrength: 0, jumpDetect: 1, flowDoubt: 0 } },
+    major: { label: '메이저', note: '모델이 원작을 잘 아는 작품. 세계관 질의는 끄고, 원작 연표가 정확하니 원작 흐름(서사 가이드)을 균형으로 켭니다.',
+        base: { modeChar: 1, modeSet: 0, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, canonStance: 'balance', jumpDetect: 1, flowDoubt: 0 } },
     semi: { label: '준메이저', note: '모델이 대략은 아는 작품. 세계관 질의를 더합니다.',
-        base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, guideStrength: 0, jumpDetect: 1, flowDoubt: 0 } },
+        base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 1, canonStance: 'balance', jumpDetect: 1, flowDoubt: 0 } },
     minor: { label: '마이너', note: '모델 지식이 얇은 작품. 없는 사건을 안내할 위험이 커서 서사 가이드를 끄고, 전개 블록에 "틀릴 수 있음" 경고를 붙입니다.',
         base: { modeChar: 1, modeSet: 1, instrOnly: 0, modeBranch: 1, compLedger: 1, modeFlow: 1, compPosition: 1, compGuard: 1, compGuide: 0, jumpDetect: 1, flowDoubt: 1 } },
     niche: { label: '씹마이너', note: '웹에도 자료가 거의 없는 작품. 지침·자료 탭(추가 설정 자료)이나 저장 로어에 원작 자료를 넣어야 제대로 동작합니다. 위치 자동 판정이 자주 틀리니 전개모드 탭에서 직접 지정하는 걸 권하고, 시간 점프 감지도 끕니다.',
@@ -489,20 +497,21 @@ const LOREQA_FAME = {
 };
 const LOREQA_FAME_LABELS = {
     modeChar: '인물모드', modeSet: '세계관모드', instrOnly: '추가 지침만 모드', modeBranch: '분기모드', compLedger: '분기 추적', branchMainTier: '메인 분기 주입',
-    modeFlow: '전개모드', compPosition: '위치 추적', compGuard: '시점 가드', compGuide: '서사 가이드 (세계 상태)', guideStrength: '서사 가이드 강도', jumpDetect: '시간 점프 감지', flowDoubt: '전개 "틀릴 수 있음" 경고',
+    modeFlow: '전개모드', compPosition: '위치 추적', compGuard: '시점 가드', compGuide: '서사 가이드 (세계 상태)', canonStance: '원작 흐름', jumpDetect: '시간 점프 감지', flowDoubt: '전개 "틀릴 수 있음" 경고',
     lore: '질의 방식', search: '1차 웹 검색', verifySearch: '2차 웹 검색', doubt: '"틀릴 수 있음" 경고',
 };
 function loreqa_fameValue(k, v) {
+    if (k === 'canonStance') return (LOREQA_STANCES.find(x => x[0] === String(v)) || [0, String(v)])[1];
     v = Number(v);
     if (k === 'lore') return { 1: '1차만', 2: '1차 + 2차 검증', 3: 'MCP' }[v] || String(v);
     if (k === 'branchMainTier') return { 0: '끔', 1: '★만', 2: '전부', 3: '★ 우선' }[v] || String(v);
-    if (k === 'guideStrength') return v === 1 ? '유도' : '참고만';
     return v === 1 ? '켬' : '끔';
 }
 // 이 단계가 바꿀 항목 [{ where, key, from, to }]
 function loreqa_fameChanges(tier) {
     const T = LOREQA_FAME[tier], c = loreqa_cfg, mc = loreqa_ensureModeCfg(), out = [];
-    for (const [k, v] of Object.entries(T.base)) if (Number(c[k] ?? LOREQA_DEFAULTS[k]) !== v) out.push({ where: '', key: k, from: c[k] ?? LOREQA_DEFAULTS[k], to: v });
+    const differs = (cur, v) => typeof v === 'string' ? String(cur ?? '') !== v : Number(cur) !== v;
+    for (const [k, v] of Object.entries(T.base)) if (differs(c[k] ?? LOREQA_DEFAULTS[k], v)) out.push({ where: '', key: k, from: c[k] ?? LOREQA_DEFAULTS[k], to: v });
     for (const [m, label] of [['char', '인물'], ['set', '세계관']]) {
         if (!T[m]) continue;
         for (const [k, v] of Object.entries(T[m])) if (Number(mc[m][k]) !== v) out.push({ where: label, key: k, from: mc[m][k], to: v });
@@ -536,6 +545,7 @@ const LOREQA_ENV_RULE = {
     charTokens: 4000,    // 인물모드 1차 질의가 읽을 대화량 (매 턴 호출이라 짧게: 지금 장면이면 충분)
     setTokens: 6000,     // 세계관모드 1차 질의가 읽을 대화량
     posTokens: 10000,    // 위치 판정이 읽을 대화량 (몇 턴에 한 번이라 넉넉하게: 흩어진 시점 단서)
+    sceneTokens: 8000,   // 장면 판단이 읽을 대화량 (장면이 바뀔 때만: 누가 어디 있는지 알 만큼)
     batchTokens: 12000,  // 분기 추출 한 묶음에 보낼 대화량
     mainDivShare: 0.05,  // 메인 분기 블록이 쓸 컨텍스트 몫
     charsPerToken: { en: 4, ko: 1.5, ja: 1.5, zh: 1.2 },
@@ -545,6 +555,7 @@ const LOREQA_ENV_RULE_UI = [
     ['charTokens', '인물모드 읽을 대화량 (토큰)', '매 턴 도는 호출. 줄이면 싸지고, 늘리면 장면을 더 길게 봄'],
     ['setTokens', '세계관모드 읽을 대화량 (토큰)', ''],
     ['posTokens', '위치 판정 읽을 대화량 (토큰)', '몇 턴에 한 번 돌아서 넉넉해도 부담이 적음'],
+    ['sceneTokens', '장면 판단 읽을 대화량 (토큰)', '장면이 바뀔 때만 돎. 지금 누가 어디 있는지 알 만큼'],
     ['batchTokens', '분기 한 묶음 대화량 (토큰)', '크면 요청 수가 줄고, 작으면 꼼꼼히 읽음'],
     ['maxGap', '공백 허용 턴', '분기 기록에도 Q&A 대화 창에도 없는 턴을 몇 턴까지 허용할지'],
     ['mainDivPct', '메인 분기 블록 비율 (%)', '메인 컨텍스트 중 분기 기록에 쓸 몫'],
@@ -580,12 +591,13 @@ function loreqa_envCalc(p, R = loreqa_envRule()) {
             ledgerBatchTurns: batch,
             charLogs, setLogs,
             posReadMsgs: posTurns,
+            sceneTurns: clamp(R.sceneTokens / turn, 2, 6),
             posReadChars: Math.round(R.posTokens * cpt),
             divMainChars,
         },
     };
 }
-const LOREQA_ENV_LABELS = { ledgerEvery: '분기 자동 읽기 간격 (턴)', ledgerBatchTurns: '분기 한 묶음 턴 수', charLogs: '인물모드 1차 참조 턴 수', setLogs: '세계관모드 1차 참조 턴 수', posReadMsgs: '위치 판정 참조 턴 수', posReadChars: '위치 판정 참조 글자 수', divMainChars: '메인 분기 블록 글자 수' };
+const LOREQA_ENV_LABELS = { ledgerEvery: '분기 자동 읽기 간격 (턴)', ledgerBatchTurns: '분기 한 묶음 턴 수', charLogs: '인물모드 1차 참조 턴 수', setLogs: '세계관모드 1차 참조 턴 수', posReadMsgs: '위치 판정 참조 턴 수', sceneTurns: '장면 판단 참조 턴 수', posReadChars: '위치 판정 참조 글자 수', divMainChars: '메인 분기 블록 글자 수' };
 function loreqa_envCurrent(k) {
     const mc = loreqa_ensureModeCfg();
     if (k === 'charLogs') return mc.char.maxLogs;
@@ -1524,7 +1536,7 @@ async function loreqa_openSettingsWindow() {
 
     // 진행 상황 창 (Risu 본 화면 구석)
     secBasic.appendChild(loreqa_createRow('진행 상황 창', loreqa_createToggle('loreqa-s-floatOn', Number(loreqa_cfg.floatOn ?? 1) === 1, async v => { loreqa_cfg.floatOn = v ? 1 : 0; await loreqa_saveConfig(); if (!v) loreqa_floatRemove(); }), '보조 모델 호출마다 단계 · 모델 · 경과 시간, 끝나면 출력·생각 토큰과 초당 토큰을 Risu 화면 구석에 잠깐 띄움. 처음 한 번 메인 화면 접근 권한을 물을 수 있음'));
-    secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }], loreqa_cfg.floatPos || 'tr', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); })));
+    secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }], loreqa_cfg.floatPos || 'br', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); }), '오른쪽 위는 Yumi Provider Manager 창과 겹칠 수 있음'));
 
     // 활성화 모드
     secBasic.appendChild(loreqa_createRow(
@@ -3309,7 +3321,7 @@ function loreqa_buildTabs(p) {
     const [fl, fr] = split('flow', [], []);
     panes.flow.pane.classList.add('loreqa-pane-track');
     loreqa_buildFlowContent(fl, fr);
-    fr.appendChild(loreqa_promptSection(['pos', 'world', 'scenePick', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'guideRef', 'guideSteer', 'flowDoubt']));
+    fr.appendChild(loreqa_promptSection(['pos', 'world', 'sceneJudge', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'stanceFollow', 'stanceCanon', 'stanceBalance', 'stanceChange', 'stanceFree', 'flowDoubt']));
     // 기본 · 프리셋: 원작 Q&A 공통 설정 포함
     // 공통 칸(원작 Q&A 공통, 캐릭터 & 보정, 1차 질의)은 모드별 설정으로 옮겨 갔으니 화면에서 뺀다
     p.secLore.remove(); p.secChar.remove(); p.secFirst.remove();
@@ -3390,7 +3402,7 @@ async function loreqa_renderBoard() {
             const st = await loreqa_posLoad(snap.scope);
             if (st.cur) {
                 const b = st.byPos[st.cur.key] || {};
-                info = `${st.cur.label}${st.cur.guess ? ' (추정)' : ''} · 상태표 ${b.world ? `공개 ${b.world.pub.length} · 숨은 ${b.world.hidden.length}` : (c.compGuard || c.compGuide ? '없음' : '끔')} · 장면 비밀 ${c.compGuard ? (b.scene?.picks?.length ?? 0) + '개' : '끔'} · 세계 상태 ${c.compGuide ? (b.world?.pub?.length ? '주입' : '없음') : '끔'}`;
+                info = `${st.cur.label}${st.cur.guess ? ' (추정)' : ''} · 상태표 ${b.world ? `공개 ${b.world.pub.length} · 숨은 ${b.world.hidden.length} · 비트 ${(b.world.beats || []).length}` : (c.compGuard || c.compGuide ? '없음' : '끔')} · 장면 비밀 ${c.compGuard ? (b.scene?.picks?.length ?? 0) + '개' : '끔'} · 원작 흐름 ${c.compGuide ? `${(LOREQA_STANCES.find(x => x[0] === loreqa_stance()) || [])[1] || '균형'} · 조건 맞는 비트 ${(b.scene?.ready || []).length}개` : '끔'}`;
             }
         }
         rows.push(['전개', '켜짐', info]);
@@ -3452,41 +3464,64 @@ async function loreqa_renderStatus() {
     );
     card.appendChild(row);
     if (loreqa_posMsg) { const m = loreqa_el('div', 'loreqa-muted', loreqa_posMsg); m.style.marginTop = '6px'; card.appendChild(m); }
-    // 세계 상태표 (서사 가이드 · 시점 가드 재료): [PUBLIC] 은 서사 가이드로, [HIDDEN] 은 장면마다 골라 시점 가드로
+    // 세계 상태표 (서사 가이드 · 시점 가드 재료): [PUBLIC] 세계 상태, [HIDDEN] 비밀 후보, [BEATS] 조건 붙은 원작 사건
     if (st.cur && (loreqa_flowOn('compGuard') || loreqa_flowOn('compGuide'))) {
-        const b = st.byPos[st.cur.key], W = b?.world;
+        const b = st.byPos[st.cur.key], W = b?.world, sc = b?.scene, played = Array.isArray(b?.played) ? b.played : [];
         const d = loreqa_el('details'); d.open = !W;
-        d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length}줄 · 숨은 ${W.hidden.length}줄 (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
-        d.appendChild(loreqa_el('div', 'loreqa-muted', '[PUBLIC] 아래 줄은 서사 가이드(화면 밖 원작 세계의 상태)로, [HIDDEN] 아래 줄은 시점 가드 후보로 쓰입니다. 시점 가드는 그중 지금 장면에 닿는 것만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
-        const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '160px'; area.value = W?.raw || '';
-        const picked = loreqa_el('div', 'loreqa-muted'); picked.style.marginTop = '6px'; picked.style.whiteSpace = 'pre-wrap';
-        if (W && loreqa_flowOn('compGuard')) {
-            const ps = b.scene?.picks || [];
-            picked.textContent = W.hidden.length ? ('이 장면의 비밀 (시점 가드로 들어감):\n' + (ps.length ? ps.map(i => '- ' + W.hidden[i]).join('\n') : '(해당 없음)')) : '숨은 상태가 없어 시점 가드에 넣을 것이 없습니다.';
+        d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length} · 숨은 ${W.hidden.length} · 원작 비트 ${(W.beats || []).length} (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
+        d.appendChild(loreqa_el('div', 'loreqa-muted', '[PUBLIC] 은 화면 밖 원작 세계의 상태, [HIDDEN] 은 시점 가드 후보, [BEATS] 는 "사건 / needs: 조건" 형식의 다음 원작 사건입니다. 장면이 바뀔 때마다 장면 판단이 지금 장면에 닿는 비밀과 조건이 맞는 비트만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
+        const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '180px'; area.value = W?.raw || '';
+        const info = loreqa_el('div', 'loreqa-muted'); info.style.marginTop = '6px'; info.style.whiteSpace = 'pre-wrap';
+        if (W) {
+            const parts = [];
+            if (sc && !sc.skipped) parts.push(`지금 장면: ${sc.place || '?'} · ${sc.present || '?'}${sc.failed ? ' (장면 판단 실패 — 비밀은 앞쪽 몇 개, 비트는 안 넣음)' : ''}`);
+            if (loreqa_flowOn('compGuard')) { const ps = sc?.picks || []; parts.push('이 장면의 비밀 (시점 가드로 들어감):\n' + (W.hidden.length ? (ps.length ? ps.map(i => '- ' + W.hidden[i]).join('\n') : '(해당 없음)') : '(숨은 상태 없음)')); }
+            if (loreqa_flowOn('compGuide')) {
+                const live = x => !played.includes(x);
+                parts.push(`원작 흐름: ${(LOREQA_STANCES.find(x => x[0] === loreqa_stance()) || [])[1] || '균형'}`);
+                parts.push('지금 조건이 맞는 원작 비트 (주입됨):\n' + ((sc?.ready || []).filter(live).map(x => '- ' + x).join('\n') || '(없음)'));
+                if (loreqa_stance() === 'follow') parts.push('조건이 거의 맞는 비트 (원작 따라가기에서 주입):\n' + ((sc?.near || []).filter(live).map(x => '- ' + x).join('\n') || '(없음)'));
+            }
+            if (played.length) parts.push('이 위치에서 이미 일어난 비트 (다시 넣지 않음):\n' + played.map(x => '- ' + x).join('\n'));
+            info.textContent = parts.join('\n\n');
         }
         const say = m => { loreqa_posMsg = m; loreqa_renderStatus(); };
-        d.append(area, picked,
+        d.append(area, info,
             loreqa_btn('저장', async () => {
                 const p = loreqa_parseWorld(area.value);
-                if (!p.pub.length && !p.hidden.length) { say('✗ [PUBLIC] / [HIDDEN] 아래에 "- " 로 시작하는 줄이 없습니다.'); return; }
+                if (!p.pub.length && !p.hidden.length && !p.beats.length) { say('✗ [PUBLIC] / [HIDDEN] / [BEATS] 아래에 "- " 로 시작하는 줄이 없습니다.'); return; }
                 const div = await loreqa_helperDivergences(snap);
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
                 // 직접 고친 표는 분기 기록 수가 그대로인 동안 다시 만들지 않는다
-                bk.world = { raw: area.value.trim(), pub: p.pub, hidden: p.hidden, v: LOREQA_WORLD_V, n: Number(loreqa_cfg.worldCount) || 8, divN: div.length };
-                delete bk.scene; await loreqa_posSave(snap.scope, s2); say('✓ 세계 상태표를 저장했습니다. 장면 비밀은 다음 요청 때 다시 고릅니다.');
+                bk.world = { raw: area.value.trim(), pub: p.pub, hidden: p.hidden, beats: p.beats, v: LOREQA_WORLD_V, n: Number(loreqa_cfg.worldCount) || 8, nb: Number(loreqa_cfg.beatCount) || 5, divN: div.length };
+                delete bk.scene; await loreqa_posSave(snap.scope, s2); say('✓ 세계 상태표를 저장했습니다. 다음 요청 때 장면을 다시 판단합니다.');
             }),
             loreqa_btn('다시 생성', async e => {
                 e.target.disabled = true;
                 const div = await loreqa_helperDivergences(snap);
-                const fresh = await loreqa_generateWorld(st.cur.label, div);
-                if (!fresh) { say('✗ 세계 상태표 생성 실패: ' + (loreqa_state?.lastError || '빈 응답') + ' — 기존 표는 그대로 둡니다.'); return; }
+                const s1 = await loreqa_posLoad(snap.scope), pl = s1.byPos[st.cur.key]?.played || [];
+                const fresh = await loreqa_generateWorld(st.cur.label, div, pl);
+                if (!fresh) { say('✗ 세계 상태표 생성 실패: ' + (loreqa_worldErr || '빈 응답') + ' — 기존 표는 그대로 둡니다.'); return; }
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
                 bk.world = { ...fresh, divN: div.length }; delete bk.scene; await loreqa_posSave(snap.scope, s2);
                 say('✓ 세계 상태표를 다시 만들었습니다.');
             }),
-            loreqa_btn('장면 비밀 다시 고르기', async () => {
+            // 누르면 바로 판단한다 (다음 요청까지 기다리지 않음). 숨은 상태가 적어도 묻는다
+            loreqa_btn('장면 다시 판단', async e => {
+                e.target.disabled = true;
+                const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label), W2 = bk.world;
+                if (!W2) { say('세계 상태표가 아직 없습니다. 다시 생성을 먼저 누르세요.'); return; }
+                const fresh = await scoutSnapshot().catch(() => snap), div = await loreqa_helperDivergences(fresh), pl = Array.isArray(bk.played) ? bk.played : [];
+                const r = await loreqa_judgeScene(W2, fresh, div, pl);
+                const s3 = await loreqa_posLoad(snap.scope); const bk3 = loreqa_posBucket(s3, st.cur.key, st.cur.label);
+                bk3.scene = { gen: s3.sceneGen || 0, w: scoutHash(W2.raw || JSON.stringify([W2.hidden, W2.beats])), at: fresh.list.filter(m => ['char', 'assistant'].includes(m.role)).length, ...r };
+                if (r.done.length) bk3.played = [...new Set([...pl, ...r.done])].slice(-30);
+                await loreqa_posSave(snap.scope, s3);
+                say(r.failed ? '✗ 장면 판단 실패: ' + String(loreqa_state?.lastError || '빈 응답').split('\n')[0] + ' — 비밀은 앞쪽 몇 개만, 원작 비트는 넣지 않습니다.' : '✓ 지금 장면을 다시 판단했습니다.');
+            }),
+            loreqa_btn('끝난 비트 초기화', async () => {
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
-                delete bk.scene; await loreqa_posSave(snap.scope, s2); say('다음 요청 때 이 장면의 비밀을 다시 고릅니다.');
+                delete bk.played; delete bk.scene; await loreqa_posSave(snap.scope, s2); say('이 위치에서 이미 일어난 것으로 표시한 비트를 지웠습니다.');
             }));
         card.appendChild(d);
     }
@@ -5608,7 +5643,7 @@ function loreqa_floatHtml() {
     const now = Date.now(), keepOk = 6000, keepErr = 12000;
     loreqa_float.calls = loreqa_float.calls.filter(c => !c.end || now - c.end < (c.ok ? keepOk : keepErr)).slice(-6);
     if (!loreqa_float.calls.length) return '';
-    const pos = { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'top:10px;right:10px';
+    const pos = { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'bottom:10px;right:10px';
     const card = c => {
         const sec = ((c.end || now) - c.start) / 1000;
         let line;
@@ -7180,27 +7215,41 @@ Evidence, in order of trust:
 1. In-story dates and times (if given). Use them when the original's chronology for that period is documented. Many originals have vague, inconsistent or no dates: in that case do not force a match by date, and rely on 2 and 3.
 2. Story-progress markers in the chat: which original events are referred to as already past or still ahead, characters' ages or school years, terms, seasons, holidays, story arcs or locations that only exist in a certain period.
 3. Never match by topical similarity. A roleplay scene that resembles, or talks about, a later original scene does NOT move the timeline forward, and a divergent roleplay event does not map to the original event it resembles.` } },
-    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'count', 'mediumRule', 'language'],
-        locked: '출력의 [PUBLIC] / [HIDDEN] 표식과 "- " 로 시작하는 줄 형식은 지켜야 함 (그대로 읽어서 나눔). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
+    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'count', 'beats', 'mediumRule', 'language'],
+        locked: '출력의 [PUBLIC] / [HIDDEN] / [BEATS] 표식, "- " 로 시작하는 줄, 비트의 " / needs:" 와 "(broken: …)" 형식은 지켜야 함 (그대로 읽어서 나눔). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
         def: { en: `You describe the CURRENT STATE OF THE WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
-This is NOT a list of upcoming events. It is where things stand right now, so that a writer can keep the original world moving in the background while the story's own characters (including the player's original character) may be somewhere else doing other things.
+This is NOT the script of this story. It is where the original world stands right now, so that a writer can keep it moving in the background while the story's own characters (including the player's original character) may be somewhere else doing other things.
 Use web search to check the original at this point instead of relying on memory.
 The story's confirmed changes (confirmed_changes) override the original: if a story character has joined, left, replaced, saved or killed someone, show the result.
 
-Output exactly two sections with these tags:
+Output exactly three sections with these tags:
 [PUBLIC]
-- One line per major character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now. Present tense. No backstory, no explanation of motives or mechanics, nothing that happens later.
+- One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now. Present tense. No backstory, no explanation of motives or mechanics, nothing that happens later.
+  Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Mention them only where confirmed_changes give an original character or faction a lasting new state (for example a death, a defection, a new ruler).
 [HIDDEN]
 - Facts already true now that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 10.
   Only real secrets: skip mere unknown information (such as not knowing where something is). No motives, mechanics, weaknesses or future plans.
   Secrets created by the story count only if confirmed_changes state them; never invent new ones.
-Rules: only what is true at this point; nothing that happens later; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out.
-Write the lines in {{language}}; keep the two tags as they are. No preamble, no closing remarks.` } },
-    scenePick: { label: '장면 비밀 고르기', ph: ['limit'],
-        locked: '입력: 번호 붙은 숨은 상태, 지금 장면 끝, 이번 유저 입력. 답은 번호(쉼표로 구분) 또는 NONE',
-        def: { en: `You pick which hidden facts matter for the current scene of a story.
-Given the numbered hidden_states, the end of the current scene and the latest user input, return the numbers of the hidden states whose characters are present in this scene, are about to meet the scene's characters, or are being talked about, so that a slip is possible now. At most {{limit}}. When unsure about one, include it.
-Answer only with the numbers separated by commas (for example "2,5"), or NONE.` } },
+[BEATS]
+- The next major events of the ORIGINAL after this point, in order, at most {{beats}}. Format: "<what happens, who is involved> / needs: <who must be where, or what must be true, for it to happen>".
+  Skip events listed in events_already_played (they already happened in this story).
+  If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
+Rules: only what is true at this point; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out.
+Write the lines in {{language}}; keep the three tags and the markers "/ needs:" and "(broken:" as they are. No preamble, no closing remarks.` } },
+    sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
+        locked: '입력: 세계 상태, 번호 붙은 숨은 상태와 원작 비트, 최근 이야기, 이번 유저 입력. 답은 PLACE / PRESENT / SECRETS / READY / NEAR / DONE 여섯 줄 (그대로 읽어서 나눔)',
+        def: { en: `You read where a story stands right now and match it against the original work's state.
+Inputs: world_state (the original world off-screen), hidden_states and beats (numbered), story_changes (confirmed changes in this story), recent_story and latest_user_input.
+Decide from the story itself, not from the original: the story's characters may be somewhere else than the original's characters.
+story_changes can be out of date about who is where or who travels with whom; when recent_story says otherwise, recent_story wins.
+Answer with exactly these six lines:
+PLACE: where the story's main characters are now (short)
+PRESENT: the characters in the current scene, comma separated
+SECRETS: numbers of hidden_states whose characters are in this scene, about to meet its characters, or being talked about, so a slip is possible now (when unsure, include it), or NONE
+READY: numbers of beats whose "needs" are met in the current scene, so they could happen here now, or NONE
+NEAR: numbers of beats whose "needs" are almost met (one step away, such as the characters heading toward each other), or NONE
+DONE: numbers of beats that have already happened in recent_story, or NONE
+Use only numbers separated by commas after each label. No other text.` } },
     injPos: { label: '위치 블록 문구', ph: ['position'], locked: '맨 앞의 [Canon Position] 표식은 잠김',
         def: { ko: '현재 원작 시점: {{position}}', en: 'Current point in canon: {{position}}' } },
     injGuard: { label: '시점 가드 블록 안내', ph: [], locked: '이 문구 뒤에 시점 가드 목록이 붙음',
@@ -7225,12 +7274,21 @@ Answer with exactly two words: the time word (FORWARD, BACK or NONE) and the sce
     injDiv: { label: '분기 블록 안내', ph: [], locked: '맨 앞의 [Canon Divergences] 표식은 잠김. 이 문구 뒤에 분기 목록이 붙음',
         def: { ko: '이 이야기에서 원작과 달라진 확정 사실이다. 원작과 충돌하면 이쪽이 현재 사실이다. 직접 서술하거나 설명하지 말고 일관성을 지키는 데만 쓴다.',
                en: 'Confirmed facts in this story that differ from canon. Where they conflict with canon, these are the current truth. Do not narrate or explain them; use them only to stay consistent.' } },
-    guideRef: { label: '세계 상태 안내 (참고만)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태표의 공개 상태가 붙음',
-        def: { ko: '아래는 이 시점 원작 세계의 상태다. 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. 이 장면에 닿는 길은 그 인물이 실제로 이 자리에 있거나, 소식·소문으로 전해지거나, 이야기의 인물이 그쪽으로 가는 것뿐이다. 원작의 일을 이 장면으로 옮겨 오지 말고, 자연스럽게 닿을 때만 반영한다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: "The following is the state of the original world at this point. It keeps moving in the background as in the original; it is not the next scene of this story. It reaches this scene only if those characters are actually present, if news or rumours carry it here, or if the story's characters go there. Do not move the original's events into this scene; reflect them only where they reach it naturally. Characters know only what they witnessed or were told." } },
-    guideSteer: { label: '세계 상태 안내 (유도)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태표의 공개 상태가 붙음',
-        def: { ko: '아래는 이 시점 원작 세계의 상태다. 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. 원작의 일을 이 장면으로 옮겨 오지 말고, 대신 이야기의 인물들의 길이 이 흐름과 만나도록 이끈다. 유저 입력과 충돌하면 유저 입력이 우선한다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: "The following is the state of the original world at this point. It keeps moving in the background as in the original; it is not the next scene of this story. Do not move the original's events into this scene; instead steer the story's characters so that their path meets this flow. The user's input takes priority when they conflict. Characters know only what they witnessed or were told." } },
+    stanceFollow: { label: '원작 흐름 안내 (원작 따라가기)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태 · 지금 일어날 수 있는 원작 사건 · 조건이 거의 맞는 사건 · 분기로 깨진 사건이 붙음',
+        def: { ko: '이 이야기는 원작의 흐름을 따라간다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. "지금 일어날 수 있는 원작 사건"이 있으면 이야기를 그쪽으로 이끌고, "조건이 거의 맞는 사건"은 그 조건이 갖춰지도록 이야기를 기울인다. 분기로 깨진 사건은 바뀐 상황에 맞는 비슷한 사건으로 대신할 수 있다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지는 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story follows the original. The world state below keeps moving off-screen as in the original. If there are "original events that could happen now", steer the story toward them; for "events almost ready", lean the story so their conditions come together. An event broken by the changes may be replaced by a similar event that fits the new situation. Never move an original event into a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
+    stanceCanon: { label: '원작 흐름 안내 (원작 우선)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
+        def: { ko: '이 이야기는 원작의 흐름을 우선한다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. "지금 일어날 수 있는 원작 사건"이 있으면 이야기를 그쪽으로 이끌되, 조건을 억지로 만들지는 않는다. 분기로 바뀐 것은 그것이 직접 닿는 곳에만 반영한다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story gives priority to the original. The world state below keeps moving off-screen as in the original. If there are "original events that could happen now", steer the story toward them, but do not force their conditions. Reflect the story\'s changes only where they directly reach. Never move an original event into a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
+    stanceBalance: { label: '원작 흐름 안내 (균형)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
+        def: { ko: '아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. "지금 일어날 수 있는 원작 사건"은 이야기 흐름에 자연스러울 때만 일어난다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말고, 분기로 바뀐 것은 자연스럽게 퍼지게 둔다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'The world state below keeps moving off-screen as in the original; it is not the next scene of this story. "Original events that could happen now" happen only where they fit the story naturally. Never move an original event into a scene that lacks its conditions, and let the story\'s changes spread naturally. Characters know only what they witnessed or were told.' } },
+    stanceChange: { label: '원작 흐름 안내 (개변 우선)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
+        def: { ko: '이 이야기는 원작에서 바뀐 것을 우선한다. 아래 세계 상태는 화면 밖에서 굴러가는 배경이다. 분기에 얽힌 인물과 세력은 바뀐 상황에 맞춰 적극적으로 움직이고, 그 밖의 곳은 원작대로 흘러간다. "지금 일어날 수 있는 원작 사건"은 일어날 수 있지만, 이 이야기에서 바뀐 결과와 부딪히면 바뀐 쪽을 따른다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story gives priority to what it has changed. The world state below keeps moving off-screen. Characters and factions tied to the changes actively respond to the new situation; elsewhere the world runs as in the original. "Original events that could happen now" may happen, but where they clash with the story\'s changed outcomes, the change wins. Never move an original event into a scene that lacks its conditions. Characters know only what they witnessed or were told.' } },
+    stanceFree: { label: '원작 흐름 안내 (개변 즐기기)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
+        def: { ko: '이 이야기는 원작에서 갈라져 나간다. 아래 세계 상태와 원작 사건은 "원래라면 이랬다"는 참고일 뿐이다. 세계 전체가 이 이야기에서 바뀐 것에 반응하며, 원작의 흐름보다 바뀐 것의 파급이 먼저다. 원작 사건을 이 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story branches away from the original. The world state and original events below are only a reference for "how it would have gone". The whole world responds to what this story has changed, and the ripples of those changes come before the original\'s flow. Never move an original event into this scene. Characters know only what they witnessed or were told.' } },
     qaRef: { label: 'Q&A 블록 안내 (배경지식만)', ph: [], locked: '참고 지침이 "배경지식만"일 때 Q&A 블록 끝에 붙음',
         def: { ko: '※ 위 내용은 작성자의 배경지식으로만 활용할 것. 절대로 위 내용을 직접 서술하거나, 등장인물이 해당 정보를 설명하듯 말하게 하거나, 나레이션으로 독자에게 알려주는 식으로 쓰지 말 것. 서사의 흐름상 자연스럽게 녹아들 수 있는 부분만 간접적으로 반영하고, 부자연스럽거나 불필요하면 아예 사용하지 말 것.',
                en: "※ Use the above only as the author's background knowledge. Never narrate it directly, have characters explain it as exposition, or tell it to the reader through narration. Reflect only what blends naturally into the flow of the story, indirectly; if it would be unnatural or unnecessary, do not use it at all." } },
@@ -7463,16 +7521,30 @@ function loreqa_trueDivergences(projection) {
 // ── 세계 상태표: 서사 가이드와 시점 가드의 재료. 위치(또는 분기 기록)가 바뀔 때 한 번, 웹 검색 ──
 //   [PUBLIC]  지금 원작 세계에서 누가 어디서 무엇을 하는 중인가 → 서사 가이드 블록 (화면 밖에서 굴러가는 배경)
 //   [HIDDEN]  그중 일부 인물만 아는 것 → 장면마다 관련 있는 것만 골라 시점 가드로
+//   [BEATS]   다음 원작 사건 + 조건(needs) → 장면 판단이 조건이 맞는 것만 골라 원작 흐름 블록으로 (끌어오기 방지)
 //   원작의 '다음 사건'을 넘기면 메인 모델이 그 사건을 이야기 인물 앞으로 끌어온다. 상태로 넘기면 어디서 벌어지는지가 함께 간다.
-const LOREQA_WORLD_V = 1;
+const LOREQA_WORLD_V = 2; // 2 = [BEATS] (조건 붙은 원작 사건) 추가
+// 원작 흐름 성향 (서사 가이드). '끔'은 compGuide=0 으로 따로 둔다
+const LOREQA_STANCES = [
+    ['follow', '원작 따라가기', 'stanceFollow'], ['canon', '원작 우선', 'stanceCanon'], ['balance', '균형', 'stanceBalance'],
+    ['change', '개변 우선', 'stanceChange'], ['free', '개변 즐기기', 'stanceFree'],
+];
+const loreqa_stance = () => LOREQA_STANCES.some(([k]) => k === loreqa_cfg.canonStance) ? loreqa_cfg.canonStance : 'balance';
 function loreqa_parseWorld(raw) {
     const text = String(raw || '').replace(/\r/g, '');
-    const lines = part => part.split('\n').map(l => l.trim()).filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
-    const iP = text.search(/\[PUBLIC\]/i), iH = text.search(/\[HIDDEN\]/i);
-    if (iP < 0 && iH < 0) return { pub: lines(text), hidden: [] };
-    const pubPart = iP >= 0 ? text.slice(iP + 8, iH > iP ? iH : undefined) : '';
-    const hidPart = iH >= 0 ? text.slice(iH + 8, iP > iH ? iP : undefined) : '';
-    return { pub: lines(pubPart), hidden: lines(hidPart) };
+    const head = /^(?:[-•*・·▪◦]|\d{1,2}[.)、．])\s*/;
+    const lines = part => part.split('\n').map(l => l.trim()).filter(l => head.test(l)).map(l => l.replace(head, '').trim()).filter(Boolean);
+    const tags = [['pub', /\[PUBLIC\]/i], ['hidden', /\[HIDDEN\]/i], ['beats', /\[BEATS\]/i]].map(([k, re]) => [k, text.search(re)]).filter(([, i]) => i >= 0).sort((a, b) => a[1] - b[1]);
+    const out = { pub: [], hidden: [], beats: [] };
+    if (!tags.length) { out.pub = lines(text); return out; }
+    tags.forEach(([k, i], n) => { const start = text.indexOf(']', i) + 1, end = n + 1 < tags.length ? tags[n + 1][1] : text.length; out[k] = lines(text.slice(start, end)); });
+    // 비트: "<사건> / needs: <조건>" + 끝의 "(broken: <이유>)"
+    out.beats = out.beats.map(l => {
+        const broken = /\(broken\b[^)]*\)\s*$/i.test(l);
+        const m = l.split(/\s*\/\s*needs\s*[:：]\s*/i);
+        return { text: l, event: (m[0] || l).trim(), needs: (m[1] || '').replace(/\(broken\b[^)]*\)\s*$/i, '').trim(), broken };
+    });
+    return out;
 }
 // 보조 모델에 넘기는 분기 기록 (요청 직전 loreqa_prepareTurn 과 같은 계산)
 async function loreqa_helperDivergences(snap) {
@@ -7480,10 +7552,13 @@ async function loreqa_helperDivergences(snap) {
     try { return loreqa_capTail(loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))), 'helperDivMax'); }
     catch (e) { return []; }
 }
-async function loreqa_generateWorld(label, divergences) {
-    const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), med = loreqa_mediumRule();
-    const system = loreqa_prompt('world', { source: loreqa_cfg.source, position: label, count: n, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
-    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
+// 마지막 세계 상태표 생성 실패 이유 (위치 카드에 보여 줌): HTTP 오류 코드, 출력 한도, 또는 형식을 못 읽은 답의 앞부분
+let loreqa_worldErr = '';
+// played: 이 위치에서 이미 이야기에서 일어난 원작 비트 (다시 만들 때 빼라고 알려 줌)
+async function loreqa_generateWorld(label, divergences, played = []) {
+    const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
+    const system = loreqa_prompt('world', { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
+    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), events_already_played: played.slice(-20), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
         const t0 = Date.now();
@@ -7491,34 +7566,47 @@ async function loreqa_generateWorld(label, divergences) {
         loreqa_statTime('world', Date.now() - t0); loreqa_statUsage('world', out?.usage);
         const raw = loreqa_capStr(String(typeof out === 'string' ? out : (out?.text ?? '')).trim(), 'guideChars');
         const p = loreqa_parseWorld(raw);
-        if (!p.pub.length && !p.hidden.length) { loreqa_stat('world.fail'); return null; }
-        loreqa_stat('world.gen'); loreqa_stat('world.public', p.pub.length); loreqa_stat('world.hidden', p.hidden.length);
-        return { raw, pub: p.pub, hidden: p.hidden, v: LOREQA_WORLD_V, n };
-    } catch (e) { loreqa_stat('world.fail'); console.warn('[LoreQA] 세계 상태표 생성 실패:', e?.message || e); return null; }
+        if (!p.pub.length && !p.hidden.length && !p.beats.length) {
+            const fin = out?.diagnostic?.finish ? ` (종료 사유: ${out.diagnostic.finish})` : '';
+            loreqa_worldErr = raw ? `형식을 읽지 못함${fin} — 답 앞부분: ${raw.slice(0, 160)}` : String(loreqa_state?.lastError || '빈 응답').split('\n')[0] + fin;
+            loreqa_stat('world.fail'); return null;
+        }
+        loreqa_worldErr = '';
+        loreqa_stat('world.gen'); loreqa_stat('world.public', p.pub.length); loreqa_stat('world.hidden', p.hidden.length); loreqa_stat('world.beats', p.beats.length); loreqa_stat('world.broken', p.beats.filter(b => b.broken).length);
+        return { raw, pub: p.pub, hidden: p.hidden, beats: p.beats, v: LOREQA_WORLD_V, n, nb };
+    } catch (e) { loreqa_worldErr = String(e?.message || e || loreqa_state?.lastError || '예외').split('\n')[0]; loreqa_stat('world.fail'); console.warn('[LoreQA] 세계 상태표 생성 실패:', e?.message || e); return null; }
 }
-// 시점 가드: 숨은 상태 중 지금 장면에 닿는 것만 고른다 (감지용 API, 검색 없음). 개수가 상한 이하면 묻지 않고 전부.
-async function loreqa_pickSceneSecrets(hidden, snap) {
+// 장면 판단: 장면이 바뀔 때 한 번. 지금 장소 · 등장인물, 장면에 닿는 비밀, 조건이 맞는/거의 맞는/이미 일어난 원작 비트
+//   전개모드 API (추론은 그 프로필 설정), 검색 없음. 장면과 조건을 맞춰 보는 판단이라 감지용 가벼운 모델에 맡기지 않는다.
+//   원작 비트는 끌어당기는 정보라 메인 모델에 다 넣고 거르게 하면 조건이 안 맞아도 끌어온다. 여기서 먼저 거른다.
+async function loreqa_judgeScene(W, snap, divergences, played) {
     const limit = Math.max(1, Number(loreqa_cfg.sceneSecretMax) || 4);
-    if (hidden.length <= limit) { loreqa_stat('scene.pickSkip'); return hidden.map((_, i) => i); }
-    const lastChar = [...snap.list].reverse().find(m => ['char', 'assistant'].includes(m.role));
-    const lastUser = [...snap.list].reverse().find(m => m.role === 'user');
-    const user = JSON.stringify({ hidden_states: hidden.map((h, i) => ({ n: i + 1, text: h })), current_scene_end: scoutText(lastChar).slice(-1500), latest_user_input: scoutText(lastUser).slice(-2000) });
+    const beats = (W.beats || []).filter(b => !played.includes(b.text));
+    const turns = Math.max(1, Number(loreqa_cfg.sceneTurns) || 3);
+    const recent = snap.history.slice(loreqa_turnStart(snap.history, turns)).map(m => `[${m.role}] ${m.text}`).join('\n\n').slice(-20000);
+    const lastUser = snap.list[snap.list.length - 1]?.role === 'user' ? scoutText(snap.list[snap.list.length - 1]) : '';
+    const user = JSON.stringify({
+        world_state: W.pub || [], hidden_states: (W.hidden || []).map((h, i) => ({ n: i + 1, text: h })),
+        beats: beats.map((b, i) => ({ n: i + 1, event: b.event, needs: b.needs, ...(b.broken ? { broken: true } : {}) })),
+        story_changes: (divergences || []).slice(-20).map(e => `${e.entity} · ${e.dimension}: ${e.after}`), recent_story: recent, latest_user_input: lastUser.slice(-2000),
+    });
+    const nums = (raw, label, max) => { const m = raw.match(new RegExp('^\\W*' + label + '\\s*[:：]\\s*(.*)$', 'im')); if (!m || /^\s*NONE\b/i.test(m[1])) return []; return [...new Set((m[1].match(/\d+/g) || []).map(Number).filter(x => x >= 1 && x <= max).map(x => x - 1))]; };
+    const text = (raw, label) => (raw.match(new RegExp('^\\W*' + label + '\\s*[:：]\\s*(.*)$', 'im'))?.[1] || '').trim().slice(0, 200);
     try {
-        const [bt, bp] = loreqa_jumpApi();
+        const [bt, bp] = loreqa_flowApi();
         const t0 = Date.now();
-        const out = await loreqa_callLLM([{ role: 'system', content: loreqa_prompt('scenePick', { limit }, false) }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true, step: '장면 비밀 고르기' });
-        loreqa_statTime('scene.pick', Date.now() - t0); loreqa_statUsage('scene.pick', out?.usage);
+        const out = await loreqa_callLLM([{ role: 'system', content: loreqa_prompt('sceneJudge', {}, false) }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true, step: '장면 판단' });
+        loreqa_statTime('scene.judge', Date.now() - t0); loreqa_statUsage('scene.judge', out?.usage);
         const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim();
         if (!raw) throw Error(loreqa_state?.lastError || '빈 응답');
-        loreqa_stat('scene.pick');
-        if (/^\W*NONE\b/i.test(raw)) return [];
-        const picks = [...new Set((raw.match(/\d+/g) || []).map(Number).filter(x => x >= 1 && x <= hidden.length).map(x => x - 1))].slice(0, limit);
-        loreqa_stat('scene.picked', picks.length);
-        return picks;
+        const r = { place: text(raw, 'PLACE'), present: text(raw, 'PRESENT'), picks: nums(raw, 'SECRETS', (W.hidden || []).length).slice(0, limit),
+            ready: nums(raw, 'READY', beats.length).map(i => beats[i].text), near: nums(raw, 'NEAR', beats.length).map(i => beats[i].text), done: nums(raw, 'DONE', beats.length).map(i => beats[i].text) };
+        loreqa_stat('scene.judge'); loreqa_stat('scene.picked', r.picks.length); loreqa_stat('scene.ready', r.ready.length); loreqa_stat('scene.near', r.near.length); loreqa_stat('scene.done', r.done.length);
+        return r;
     } catch (e) {
-        // 실패하면 앞쪽 상한 개수만 (빠뜨리는 것보다 낫다)
-        loreqa_stat('scene.pickFail'); console.warn('[LoreQA] 장면 비밀 고르기 실패:', e?.message || e);
-        return hidden.slice(0, limit).map((_, i) => i);
+        // 실패하면 비밀은 앞쪽 상한 개수만, 원작 비트는 넣지 않는다 (조건을 모르는 비트를 넣으면 끌려온다)
+        loreqa_stat('scene.judgeFail'); console.warn('[LoreQA] 장면 판단 실패:', e?.message || e);
+        return { place: '', present: '', picks: (W.hidden || []).slice(0, limit).map((_, i) => i), ready: [], near: [], done: [], failed: true };
     }
 }
 // 분기·전개 모드의 보조 호출에 붙일 설정 자료 (prefix: 'branch' | 'flow')
@@ -7563,7 +7651,7 @@ async function loreqa_detectTimeJump(snap, label) {
         return result;
     } catch (e) { loreqa_stat('jump.fail'); console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return none; }
 }
-// 요청 직전: 분기 기록 읽기 → 시간 점프·장면 바뀜 감지 → (위치·분기가 바뀌었으면) 세계 상태표 생성 → 장면 비밀 고르기
+// 요청 직전: 분기 기록 읽기 → 시간 점프·장면 바뀜 감지 → (위치·분기가 바뀌었으면) 세계 상태표 생성 → (장면이 바뀌었으면) 장면 판단
 async function loreqa_prepareTurn() {
     // divergences: 보조 모델용 (최신 helperDivMax 개). allDivergences: 메인 후보용 전체 — ★ 우선이 오래된 ★를 잃지 않게
     const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], allDivergences: [], fixed: '', bucket: '_' };
@@ -7602,31 +7690,51 @@ async function loreqa_prepareTurn() {
         t.pos = st.cur; t.bucket = st.cur.key;
         const bucket = loreqa_posBucket(st, st.cur.key, st.cur.label);
         const useGuard = loreqa_flowOn('compGuard'), useWorld = loreqa_flowOn('compGuide');
+        // 이 위치에서 이미 이야기에서 일어난 원작 비트. 분기 기록은 원작대로 일어난 일을 남기지 않으므로 여기서 따로 기억한다
+        const played = Array.isArray(bucket.played) ? bucket.played : [];
         // 세계 상태표: 위치가 새롭거나, 줄 수 설정이 바뀌었거나, 표를 만든 뒤 분기 기록이 바뀌었으면 다시 만든다. 실패하면 기존 표를 그대로 쓴다.
         if (useGuard || useWorld) {
-            const divN = t.divergences.length, n = Number(cfg.worldCount) || 8, w = bucket.world;
-            if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || (w.divN ?? -1) !== divN) && cfg.source) {
+            const divN = t.divergences.length, n = Number(cfg.worldCount) || 8, nb = Number(cfg.beatCount) || 5, w = bucket.world;
+            if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || w.nb !== nb || (w.divN ?? -1) !== divN) && cfg.source) {
                 loreqa_stageSet({ pos: '✓', guide: '상태표 ⏳' });
-                const fresh = await loreqa_generateWorld(st.cur.label, t.divergences);
+                const fresh = await loreqa_generateWorld(st.cur.label, t.divergences, played);
                 if (fresh) { bucket.world = { ...fresh, divN }; delete bucket.scene; dirty = true; }
             }
         }
         const W = bucket.world;
-        if (useGuard) {
-            // 시점 가드: 숨은 상태 중 이 장면에 닿는 것만. 장면이 바뀌었거나 상태표가 바뀌었으면 다시 고른다.
-            const hidden = W?.hidden || [], gen = st.sceneGen || 0, wsig = W ? scoutHash(W.raw || JSON.stringify(hidden)) : '';
-            if (hidden.length && (!bucket.scene || bucket.scene.gen !== gen || bucket.scene.w !== wsig)) {
-                loreqa_stageSet({ guard: '장면 비밀 ⏳' });
-                bucket.scene = { gen, w: wsig, picks: await loreqa_pickSceneSecrets(hidden, snap) }; dirty = true;
+        // 장면 판단: 장면이 바뀌었거나(시간 점프 감지의 장면 바뀜) 상태표가 바뀌었으면 한 번. 시간 점프 감지를 껐으면 참조 턴 수마다.
+        if (W && (useGuard || useWorld)) {
+            const live = (W.beats || []).filter(b => !played.includes(b.text));
+            const needJudge = (useGuard && (W.hidden || []).length > (Number(cfg.sceneSecretMax) || 4)) || (useWorld && live.length > 0);
+            const gen = st.sceneGen || 0, wsig = scoutHash(W.raw || JSON.stringify([W.hidden, W.beats]));
+            const replies = snap.list.filter(m => ['char', 'assistant'].includes(m.role)).length, turns = Math.max(1, Number(cfg.sceneTurns) || 3);
+            const stale = !loreqa_flowOn('jumpDetect') && bucket.scene && replies - (bucket.scene.at ?? replies) >= turns;
+            if (!bucket.scene || bucket.scene.gen !== gen || bucket.scene.w !== wsig || stale) {
+                if (needJudge) {
+                    loreqa_stageSet({ guard: '장면 판단 ⏳' });
+                    const r = await loreqa_judgeScene(W, snap, t.divergences, played);
+                    bucket.scene = { gen, w: wsig, at: replies, ...r };
+                    if (r.done.length) bucket.played = [...new Set([...played, ...r.done])].slice(-30);
+                } else bucket.scene = { gen, w: wsig, at: replies, place: '', present: '', picks: (W.hidden || []).map((_, i) => i), ready: [], near: [], done: [], skipped: true };
+                dirty = true;
             }
-            const picks = hidden.length ? (bucket.scene?.picks || []) : [];
+        }
+        const sc = bucket.scene || {}, playedNow = Array.isArray(bucket.played) ? bucket.played : [];
+        if (useGuard) {
+            // 시점 가드: 숨은 상태 중 이 장면에 닿는 것만 (넣는 비밀이 적을수록 '코끼리' 효과도 적다)
+            const hidden = W?.hidden || [], picks = hidden.length ? (sc.picks || []) : [];
             t.guard = picks.map(i => hidden[i]).filter(Boolean).map(l => '- ' + l).join('\n');
             loreqa_stageSet({ guard: !W ? '✗' : t.guard ? `✓ ${picks.length}개` : '해당 없음' });
         } else loreqa_stageSet({ guard: '끔' });
         if (useWorld) {
-            // 세계 상태 (서사 가이드): 화면 밖에서 굴러가는 원작 세계. 시간 점프 턴에도 빼지 않고 '점프 전 기준' 안내만 붙인다
+            // 세계 상태 (화면 밖 원작 세계) + 지금 장면에서 조건이 맞는 원작 비트만. 조건이 안 맞는 비트는 넣지 않는다 (넣으면 끌어온다)
+            //   원작 따라가기는 조건이 거의 맞는 비트와 분기로 깨진 비트도 넣는다. 시간 점프 턴에도 빼지 않고 '점프 전 기준' 안내만 붙인다
+            const stance = loreqa_stance(), live = x => !playedNow.includes(x);
             t.guide = (W?.pub || []).map(l => '- ' + l).join('\n');
-            loreqa_stageSet({ guide: t.guide ? '✓' : '✗' });
+            t.beatsReady = (sc.ready || []).filter(live);
+            t.beatsNear = stance === 'follow' ? (sc.near || []).filter(x => live(x) && !t.beatsReady.includes(x)) : [];
+            t.beatsBroken = stance === 'follow' ? (W?.beats || []).filter(b => b.broken && live(b.text)).map(b => b.text) : [];
+            loreqa_stageSet({ guide: W ? `✓ 비트 ${t.beatsReady.length}개` : '✗' });
         } else loreqa_stageSet({ guide: '끔' });
         loreqa_stageSet({ pos: '✓' });
     } else loreqa_stageSet({ pos: '미정', guard: loreqa_flowOn('compGuard') ? '대기' : '끔' });
@@ -8256,6 +8364,9 @@ function scoutDivergenceGate(){
 If the same thing happens in the original with the same people at roughly the same point, do NOT record it, however major it is (a canon reveal, confrontation, first meeting, injury or death that the original also contains). Knowledge records follow the same gate: a canon character learning what they also learn in the original at this point is not recorded.
 For (a), "invalidates" MUST state the original's version that no longer holds. For (b) and (c), "invalidates" states briefly what the original does not contain. Never leave "invalidates" empty.`;
 }
+// 기존 기록 바로잡기: 관문(A/B/C)과 '기록하지 않음' 목록보다 먼저. 합류는 소속 변화로 남는데 헤어짐은 '여행'으로 걸러져
+//   이미 끝난 상태가 계속 참으로 남던 문제 (예: 小夜 · 犬夜叉一行との関係 = 동행). 잠긴 부분에 넣어 고친 프롬프트에도 적용된다.
+const SCOUT_LEDGER_KEEP_TRUE=`KEEPING THE LEDGER TRUE (this overrides the DIVERGENCE GATE and the "Do NOT record" list): "ledger" is passed to other models as current fact, so a record that is no longer true does more harm than a missing one. For every record in "ledger", check whether a new message ends, reverses or changes that state: someone leaves, rejoins or parts from a group, is released or captured, recovers, reconciles, changes sides, moves out, or a relationship or arrangement ends. If so, emit an event with the SAME entity and the SAME dimension whose "after" is the state as it is now (for example "allied with Inuyasha's group, but now travelling alone, apart from them"), even if the new state alone would not pass the gate. When one change makes several records untrue (A parts from B: A's record and B's record), update each of them. In "review", name any ledger record a new message makes untrue. Do not use this rule to add facts that are not already in the ledger.`;
 function scoutLedgerExtractRule(){
     const lang=scoutLang();
     const oc=scoutOpt('original')?scoutOcRule('')+' The player OC is not a canon character: a change the OC causes is recorded only for what it changes in the original story (canon characters, canon events, canon plot), never for the OC\'s own facts or who knows them.':'';
@@ -8264,8 +8375,8 @@ function scoutLedgerExtractRule(){
         // 빈 배열로 바로 끝내지 못하게: 새 메시지마다 원작과 비교한 한 줄을 먼저 쓰게 한다 (플러그인은 events만 읽음)
         .replace('"when":"source time or unknown",','"when":"source time or unknown","core":false,')
         .replace('Return JSON only: {"events":','Return JSON only: {"review":["one short line per new assistant/char message: index, what current state in it differs from the original or the player character settings (or \'no state change\'), and whether a later scene would be written wrong without it"],"events":')
-        .replace('Return {"events":[]} when no event passes the significance rules above. Durability alone is insufficient.','Write "review" first, then derive "events" from it: every review line that names a current state a later scene would get wrong must become an event unless the ledger already has that state. "events" is empty when no review line does.');
-    const base=loreqa_prompt('ledger',{source:loreqa_cfg.source},false)+'\n'+locked;
+        .replace('Return {"events":[]} when no event passes the significance rules above. Durability alone is insufficient.','Write "review" first, then derive "events" from it: every review line that names a current state a later scene would get wrong must become an event unless the ledger already has that state. Each review line that proposes an event must also name the ORIGINAL character, group, place or event it involves (gate C); if it can name none (for example a death or quarrel among characters invented by the story), it is not an event. "events" is empty when no review line does.');
+    const base=loreqa_prompt('ledger',{source:loreqa_cfg.source},false)+'\n'+SCOUT_LEDGER_KEEP_TRUE+'\n'+locked;
     if(SCOUT_KOREAN_RE.test(lang))return base+oc;
     return oc+'\n'+base.replace('Write records in Korean;',`Write records (entity names may stay as in the source) in ${lang}; evidence quotes stay verbatim in the source language;`);
 }
@@ -8616,7 +8727,7 @@ function scoutLedgerSplitEnd(messages,start,end) {
 // ── 분기 장부 정리: 중복 합치기 · 낡은 기록 지우기 · ★ 재판정. 결과에 안 나온 기록은 그대로 둔다. ──
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
 const scoutLedgerAbort=new Set(); // 읽기 중지 요청
-const SCOUT_TIDY_LOCKED=`Each record has an "id" (r1, r2, ...). Return JSON only:
+const SCOUT_TIDY_LOCKED=`A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" were written by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
@@ -9425,9 +9536,15 @@ function loreqa_injectUnified(messages, t) {
         loreqa_insertSystemSafely(messages, c, '분기 주입');
         inj.div = c;
     }
-    if (t.guide) {
-        const lead = loreqa_prompt(Number(loreqa_cfg.guideStrength) === 1 ? 'guideSteer' : 'guideRef', {}, ko);
-        const c = LOREQA_GUIDE_BLOCK + '\n' + lead + '\n' + t.guide + (t.jump ? '\n\n' + loreqa_prompt(t.jump === 'back' ? 'injJumpBack' : 'injJump', {}, ko) : '') + (Number(loreqa_cfg.flowDoubt) === 1 ? '\n\n' + loreqa_prompt('flowDoubt', {}, ko) : '');
+    if (t.guide || t.beatsReady?.length) {
+        const lead = loreqa_prompt((LOREQA_STANCES.find(x => x[0] === loreqa_stance()) || LOREQA_STANCES[2])[2], {}, ko);
+        const sec = (title, lines) => lines?.length ? '\n\n' + title + '\n' + lines.map(l => '- ' + l).join('\n') : '';
+        const c = LOREQA_GUIDE_BLOCK + '\n' + lead
+            + (t.guide ? '\n\n' + (ko ? '# 세계 상태 (화면 밖)' : '# World state (off-screen)') + '\n' + t.guide : '')
+            + sec(ko ? '# 지금 일어날 수 있는 원작 사건' : '# Original events that could happen now', t.beatsReady)
+            + sec(ko ? '# 조건이 거의 맞는 원작 사건' : '# Original events almost ready', t.beatsNear)
+            + sec(ko ? '# 분기로 깨진 원작 사건' : '# Original events broken by the changes', t.beatsBroken)
+            + (t.jump ? '\n\n' + loreqa_prompt(t.jump === 'back' ? 'injJumpBack' : 'injJump', {}, ko) : '') + (Number(loreqa_cfg.flowDoubt) === 1 ? '\n\n' + loreqa_prompt('flowDoubt', {}, ko) : '');
         loreqa_insertSystemSafely(messages, c, '서사 가이드 주입');
         inj.guide = c;
     }
@@ -9600,11 +9717,11 @@ function loreqa_buildFlowContent(left,right){
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
     loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀 중 지금 장면에 닿는 것만 골라 "모르는 인물은 알거나 암시하면 안 됨"으로 주입. 비밀은 세계 상태표에서 고르고, 장면이 바뀌면 다시 고름');
-    // 서사 가이드: 끔 / 참고만 / 유도 (내부 값 compGuide·guideStrength 로 나눠 저장)
-    const guideNow=Number(loreqa_cfg.compGuide)===1?(Number(loreqa_cfg.guideStrength)===1?2:1):0;
-    secSet.appendChild(loreqa_createRow('서사 가이드 (세계 상태)',loreqa_createSelect('canon-trk-guideMode',[{value:0,label:'끔'},{value:1,label:'참고만'},{value:2,label:'유도'}],guideNow,async v=>{
-        const g=parseInt(v);loreqa_cfg.compGuide=g>0?1:0;loreqa_cfg.guideStrength=g===2?1:0;await loreqa_saveConfig();
-    }),'이 시점 원작 세계의 상태(누가 어디서 무엇을 하는 중인가)를 분기 기록을 반영해 안내. 화면 밖에서 원작대로 굴러가는 배경으로 넣고, 원작 사건을 이야기 인물 앞으로 끌어오지 않게 함. 참고만: 장면에 닿을 때만 반영 / 유도: 이야기 인물의 길이 그 흐름과 만나도록 이끌되 유저 입력 우선'));
+    // 원작 흐름 (서사 가이드): 끔 / 원작 따라가기 / 원작 우선 / 균형 / 개변 우선 / 개변 즐기기. 끔은 compGuide=0, 나머지는 canonStance
+    const stanceNow=Number(loreqa_cfg.compGuide)===1?loreqa_stance():'off';
+    secSet.appendChild(loreqa_createRow('원작 흐름 (서사 가이드)',loreqa_createSelect('canon-trk-stance',[{value:'off',label:'끔'},...LOREQA_STANCES.map(([value,label])=>({value,label}))],stanceNow,async v=>{
+        if(v==='off')loreqa_cfg.compGuide=0;else{loreqa_cfg.compGuide=1;loreqa_cfg.canonStance=v;}await loreqa_saveConfig();
+    }),'화면 밖 원작 세계의 상태와, 지금 장면에서 조건이 맞는 원작 사건만 넣음 (조건이 안 맞는 사건은 넣지 않아 이야기 인물 앞으로 끌려오지 않음). 원작 따라가기: 조건이 맞는 사건으로 이끌고 조건이 거의 맞는 사건 쪽으로도 기울임 / 원작 우선: 조건이 맞는 사건으로 이끔 / 균형: 자연스러울 때만 / 개변 우선: 바뀐 결과와 부딪히면 바뀐 쪽 / 개변 즐기기: 원작은 참고만, 세계가 바뀐 것에 반응'));
     secSet.appendChild(loreqa_createRow('원작 매체',loreqa_createSelect('canon-trk-medium',Object.entries(LOREQA_MEDIA).map(([value,m])=>({value,label:m.label})),loreqa_cfg.canonMedium||'auto',async v=>{loreqa_cfg.canonMedium=v;await loreqa_saveConfig();}),'위치를 어느 매체의 번호로 셀지. 원작 만화와 애니처럼 번호가 다를 때 중요'));
     const secJump=scoutSection('시간 점프');
     loreqa_trkToggle(secJump,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
@@ -9625,6 +9742,8 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'판정 참조 턴 수','posReadMsgs',3,1,'위치 판정 때 읽을 최근 턴 수 (유저 입력 + 응답 = 1턴)');
     loreqa_trkNum(secMore,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
     loreqa_trkNum(secMore,'세계 상태 인물·세력 수','worldCount',8,1,'세계 상태표 [PUBLIC] 에 적을 주요 인물·세력 수 (최대 20). 바꾸면 다음 요청 때 표를 다시 만듦');
+    loreqa_trkNum(secMore,'원작 비트 수','beatCount',5,1,'세계 상태표 [BEATS] 에 적을 다음 원작 사건 수 (최대 12). 바꾸면 다음 요청 때 표를 다시 만듦');
+    loreqa_trkNum(secMore,'장면 판단 참조 턴 수','sceneTurns',3,1,'장면 판단이 읽을 최근 턴 수 (유저 입력 + 응답 = 1턴). 원클릭 세팅 계산기로도 정함. 시간 점프 감지를 끄면 이 턴 수마다 장면을 다시 판단');
     loreqa_trkNum(secMore,'장면 비밀 수','sceneSecretMax',4,1,'시점 가드: 숨은 상태 중 지금 장면에 닿는 것을 최대 몇 개까지 넣을지. 숨은 상태가 이보다 적으면 고르지 않고 전부 넣음');
     loreqa_trkNum(secMore,'세계 상태표 글자 수','guideChars',6000,0,'세계 상태표 생성 결과를 이만큼까지 저장. 0이면 제한 없음');
     loreqa_trkNum(secMore,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
@@ -9634,9 +9753,9 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
     right.append(secSet,secJump,secModel,charSec,secMore);
     // 세계 상태표 개편(3.2.17) 전에 직접 고친 프롬프트는 새 방식과 안 맞을 수 있다. 고친 것은 그대로 두고 알리기만 한다
-    {const old={jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면 비밀을 다시 고르지 않음)',guideRef:'세계 상태 안내 (참고만)',guideSteer:'세계 상태 안내 (유도)',injJump:'위치 블록 안내 (시간 점프)'};
+    {const old={jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면을 다시 판단하지 않음)',injJump:'위치 블록 안내 (시간 점프)'};
      const mine=Object.keys(old).filter(k=>loreqa_promptCustom(k));
-     if(mine.length){const w=scoutSection('직접 고친 프롬프트 확인');w.appendChild(loreqa_el('div','loreqa-muted','서사 가이드가 "다음 원작 사건"에서 "세계 상태"로 바뀌었습니다. 아래 프롬프트는 직접 고친 것을 계속 쓰고 있어 새 방식과 안 맞을 수 있습니다. 아래 프롬프트 편집에서 "기본값으로"를 누르면 새 기본값을 씁니다.\n'+mine.map(k=>'· '+old[k]).join('\n')));w.lastChild.style.whiteSpace='pre-wrap';right.insertBefore(w,secSet);}}
+     if(mine.length){const w=scoutSection('직접 고친 프롬프트 확인');w.appendChild(loreqa_el('div','loreqa-muted','서사 가이드가 "다음 원작 사건"에서 "세계 상태 + 조건이 맞는 원작 사건"으로 바뀌었습니다. 아래 프롬프트는 직접 고친 것을 계속 쓰고 있어 새 방식과 안 맞을 수 있습니다. 아래 프롬프트 편집에서 "기본값으로"를 누르면 새 기본값을 씁니다.\n'+mine.map(k=>'· '+old[k]).join('\n')));w.lastChild.style.whiteSpace='pre-wrap';right.insertBefore(w,secSet);}}
 
     const briefSec=scoutSection('원작 브리핑 (참고용 · 주입 안 됨)');
     const briefBtns=document.createElement('div');briefBtns.className='loreqa-lore-buttons';
