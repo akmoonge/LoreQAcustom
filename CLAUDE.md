@@ -168,7 +168,10 @@ comments are Korean.
   last `sceneTurns` turns) runs when `st.sceneGen` bumps (time-jump detector answers time + SAME/NEW),
   the table changes, or every `sceneTurns` replies if jump detection is off. One call returns PLACE,
   PRESENT, SECRETS (≤ `sceneSecretMax` → 시점 가드), READY / NEAR beats and DONE beats. Stored as
-  `byPos[key].scene`; DONE beats go to `byPos[key].played` (canon-as-written events never reach the
+  `byPos[key].scene`; a locked extra line (`LOREQA_SCENE_ONSCREEN`, appended even to a customised prompt)
+  asks ONSCREEN = numbered world_state lines whose character / group is in the current scene; those lines
+  are left out of the injected "World state (off-screen)" (the story wins). With world on and any PUBLIC
+  line, the judge runs on scene change even when there are no beats / few secrets. DONE beats go to `byPos[key].played` (canon-as-written events never reach the
   ledger) and are excluded from later judgments and regeneration. Skipped when nothing to choose.
 - 원작 흐름 (`canonStance`: follow / canon / balance / change / free; off = `compGuide` 0) picks the
   stance prompt in the `[Canon Guide]` block; only READY beats are injected (follow also NEAR and broken
