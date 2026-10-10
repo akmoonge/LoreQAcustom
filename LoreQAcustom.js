@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.23
+//@version 3.2.24
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7295,7 +7295,7 @@ The records were written batch by batch while reading forward, so they contain d
 - Re-judge "core": true only for a state the main writer must never contradict in any scene: true identity, name or lineage; alive or dead; custody or guardian; house, side or group; a relationship status (family, romance, enmity, alliance); a public reputation; which canon characters know the player's character's identity or a central secret. Every record saying that a canon character knows her true lineage or identity is core, whoever it is. Everything else is false. Keep core short and few.
 - DROP a record that involves no character, group, place or event from the original, i.e. one solely about the player's character and characters invented in this story (their relationships, deaths, fights, arrangements).
 - Never invent facts. Use only what the records say. When unsure whether two records are the same, leave them separate.
-- Records marked "locked" were edited by the user: never merge or drop them, but you may drop other records that they replace.
+- Records marked "locked" are protected by the user: never merge, drop or rewrite them, but you may drop other records that they replace.
 Write records in the same language as the existing records.` } },
     pos: { label: '위치 판정 기준', ph: ['source'],
         locked: '뒤에 원작 매체별 셈법과 출력 네 줄(위치 / Index / Confidence / Source) 형식이 자동으로 붙음',
@@ -8848,7 +8848,7 @@ function scoutLedgerSplitEnd(messages,start,end) {
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
 const scoutLedgerAbort=new Set(); // 읽기 중지 요청
 const SCOUT_TIDY_LOCKED=`Keep family relations, lineage and identities consistent across records. Where records disagree on such a detail (for example one says 異母兄 and another 異父兄), keep only what their source_messages evidence actually supports, otherwise the less specific term; never add a detail no record supports.
-A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" were written by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
+A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" are protected by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
@@ -8864,7 +8864,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     const idOf=new Map(),evOf=new Map();
     live.forEach((e,i)=>{const r='r'+(i+1);idOf.set(e.id,r);evOf.set(r,e);});
     let position='';try{position=(await loreqa_posLoad(scope))?.cur?.label||'';}catch(_){}
-    const records=live.map(e=>({id:idOf.get(e.id),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:!!e.edited,source_messages:(e.evidence||[]).map(v=>v.index)}));
+    const records=live.map(e=>({id:idOf.get(e.id),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:scoutLocked(e),source_messages:(e.evidence||[]).map(v=>v.index)}));
     const system=loreqa_prompt('tidy',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_TIDY_LOCKED;
     const [bt,bp]=loreqa_branchApi();
     const started=Date.now();
@@ -8882,7 +8882,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     const str=(x,n)=>typeof x==='string'?x.trim().slice(0,n):'';
     const merges=[];
     for(const m of Array.isArray(v?.merge)?v.merge:[]){
-        const from=(Array.isArray(m?.from)?m.from:[]).filter(r=>evOf.has(r)&&!used.has(r)&&!evOf.get(r).edited);
+        const from=(Array.isArray(m?.from)?m.from:[]).filter(r=>evOf.has(r)&&!used.has(r)&&!scoutLocked(evOf.get(r)));
         const entity=str(m?.entity,120),dimension=str(m?.dimension,120),after=str(m?.after,500);
         if(!from.length||!entity||!dimension||!after){notes.push('합치기 1건 무시(형식)');continue;}
         from.forEach(r=>used.add(r));
@@ -8895,12 +8895,12 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     }
     const drops=[];
     for(const d of Array.isArray(v?.drop)?v.drop:[]){
-        const r=d?.id;if(!evOf.has(r)||used.has(r)||evOf.get(r).edited)continue;
+        const r=d?.id;if(!evOf.has(r)||used.has(r)||scoutLocked(evOf.get(r)))continue;
         used.add(r);drops.push({id:evOf.get(r).id,by:evOf.get(d?.by)?evOf.get(d.by).entity+' · '+evOf.get(d.by).dimension:'',reason:str(d?.reason,200)});
     }
     let cored=0;
     const coreSet=new Map();
-    for(const c of Array.isArray(v?.core)?v.core:[]){const r=c?.id;if(!evOf.has(r)||used.has(r)||evOf.get(r).edited)continue;coreSet.set(evOf.get(r).id,c.core===true||c.core==='true');}
+    for(const c of Array.isArray(v?.core)?v.core:[]){const r=c?.id;if(!evOf.has(r)||used.has(r)||scoutLocked(evOf.get(r)))continue;coreSet.set(evOf.get(r).id,c.core===true||c.core==='true');}
     if(!merges.length&&!drops.length&&!coreSet.size){entry.status='정리할 것 없음';ledger.sinceTidy=0;loreqa_stat('tidy.run');loreqa_stat('tidy.nothing');loreqa_stat('tidy.recordsBefore',live.length);return {merged:0,dropped:0,cored:0};}
     // 되돌리기용 직전 장부
     await risuai.pluginStorage.setItem(scoutLedgerBackupKey(scope),JSON.stringify({time:new Date().toISOString(),ledger}));
@@ -9045,7 +9045,10 @@ function loreqa_cleanLedgerEvent(raw) {
     if (!e.entity || !e.dimension || !e.after) return null;
     return e;
 }
-// 직접 쓴 기록: 근거 없이 저장하고 '직접 수정함'으로 표시해 다시 읽기·정리에서 지워지지 않게 한다
+// 정리에서 보호: 사용자가 '보호'로 표시한 기록만 (고친 기록이라고 정리에서 빠지지는 않는다).
+//   직접 쓴 기록은 근거 인용이 없어 정리가 '근거 없음'으로 지울 수 있으므로 따로 끄지 않는 한 보호한다.
+const scoutLocked = e => e?.locked === true || (e?.manual === true && e?.locked !== false);
+// 직접 쓴 기록: 근거 없이 저장하고 '직접 수정함'으로 표시해 다시 읽기에서 지워지지 않게 한다
 function loreqa_manualEvent(e) {
     return { ...e, id: 'manual:' + scoutHash(JSON.stringify([e.entity, e.dimension, e.after, Date.now(), Math.random()])), evidence: [], edited: true, manual: true };
 }
@@ -9099,7 +9102,7 @@ async function scoutLedgerPanel(){
     const status=document.createElement('p');status.textContent=scoutLedgerStatus.get(scope)||'저장된 변경 기록';box.appendChild(status);
     const all=document.createElement('button');all.textContent='기존 대화 전체 읽기 / 이어서 읽기';all.onclick=async()=>{if(all.disabled)return;all.disabled=true;try{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');await scoutLedgerSync(fresh,Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{all.disabled=false;}};box.appendChild(all);
     const rescan=document.createElement('button');rescan.textContent='인지 기록 포함 과거 재검사';rescan.onclick=async()=>{rescan.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);scoutLedgerReconcile(l,scoutCompleted(fresh));if(!l.rescanPrev||l.hashes.length>l.rescanPrev.length)l.rescanPrev=l.hashes;l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{rescan.disabled=false;}};box.appendChild(rescan);
-    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='직접 수정한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>e.edited);l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
+    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='직접 고치거나 쓰거나 보호한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>e.edited||scoutLocked(e));l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
     const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 직접 수정한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
     scoutLedgerLogButton(box,scope);
@@ -9107,7 +9110,7 @@ async function scoutLedgerPanel(){
     {
         status.style.cssText='margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#181825;border:1px solid #313244;color:#cdd6f4;font-size:12px;line-height:1.5';
         all.textContent='이어서 읽기';all.title='아직 안 읽은 대화부터 끝까지 읽습니다. 자동 읽기 간격과 상관없이 바로 시작합니다.';
-        redo.textContent='처음부터 다시 읽기';redo.title='직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 새 기준으로 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';
+        redo.textContent='처음부터 다시 읽기';redo.title='직접 고치거나 쓰거나 보호한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 새 기준으로 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';
         rescan.textContent='기록 두고 다시 훑기';rescan.title='지금 기록은 그대로 둔 채 처음부터 다시 읽어 빠진 것만 보탭니다.';
         tidy.title=tidy.title||'';undo.title=undo.title||'';
         const logBtn=[...box.querySelectorAll(':scope > button')].find(b=>b.textContent==='중대 분기 진단 로그'),logPane=logBtn?.nextElementSibling;if(logBtn)logBtn.textContent='진단 로그';
@@ -9160,16 +9163,17 @@ async function scoutLedgerPanel(){
         fld('entity','인물·대상 (필수)',false,'예: 小夜');fld('dimension','항목 (필수, 같은 사실의 기준 키)',false,'예: 犬夜叉一行との関係');fld('category','분류');
         fld('change','무엇이 바뀌었나',true);fld('after','바뀐 뒤 상태 (필수)',true);fld('invalidates','깨진 원작 사실 (없으면 비움)',true);fld('when','시점',false,'모르면 비움');
         const cw=document.createElement('label');cw.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:#cdd6f4';const cb=document.createElement('input');cb.type='checkbox';cw.append(cb,document.createTextNode('★ 핵심'));add.appendChild(cw);
+        const lw=document.createElement('label');lw.style.cssText=cw.style.cssText;const lcb=document.createElement('input');lcb.type='checkbox';lcb.checked=true;lw.append(lcb,document.createTextNode('🔒 정리에서 보호 (근거 인용이 없어 정리가 지울 수 있음)'));add.appendChild(lw);
         const save=document.createElement('button');save.textContent='추가';save.style.marginTop='6px';
         save.onclick=()=>{const base=loreqa_cleanLedgerEvent({...Object.fromEntries(Object.entries(f).map(([k,el])=>[k,el.value])),core:cb.checked});
             if(!base){status.textContent='인물·대상, 항목, 바뀐 뒤 상태는 비울 수 없습니다.';return;}
-            editLedger(l=>{l.events.push(loreqa_manualEvent(base));});};
+            editLedger(l=>{l.events.push({...loreqa_manualEvent(base),locked:lcb.checked});});};
         add.appendChild(save);box.appendChild(add);
     }
     for(const event of [...ledger.events].reverse()){
         const excluded=ledger.excluded.includes(event.id);
         const row=document.createElement('details'),summary=document.createElement('summary');
-        summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
+        summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
         if(excluded)summary.classList.add('loreqa-excluded');
         row.appendChild(summary);
         const fields={};
@@ -9188,6 +9192,7 @@ async function scoutLedgerPanel(){
         const btns=document.createElement('div');btns.style.marginTop='6px';
         const mkb=(t,fn,color)=>{const x=document.createElement('button');x.textContent=t;if(color)x.style.color=color;x.onclick=fn;btns.appendChild(x);};
         mkb('수정 저장',()=>editLedger(l=>{const e=l.events.find(x=>x.id===event.id);if(!e)throw Error('이미 지워진 기록입니다.');for(const[k,el]of Object.entries(fields)){if(k==='__core'){e.core=!!el.checked;continue;}e[k]=String(el.value).trim().slice(0,k==='entity'||k==='dimension'||k==='when'?120:500);}if(!e.entity||!e.dimension)throw Error('인물·대상과 항목은 비울 수 없습니다.');e.edited=true;}));
+        { const lk=scoutLocked(event); mkb(lk?'🔒 보호 해제':'정리에서 보호',()=>editLedger(l=>{const e=l.events.find(x=>x.id===event.id);if(e)e.locked=!lk;})); }
         mkb(excluded?'다시 사용':'이 기록 제외',()=>editLedger(l=>{l.excluded=excluded?l.excluded.filter(x=>x!==event.id):[...new Set([...l.excluded,event.id])];}));
         mkb('삭제',()=>{if(!confirm(`"${event.entity} · ${event.dimension}" 기록을 삭제할까요? 되돌릴 수 없습니다.`))return;editLedger(l=>{l.events=l.events.filter(x=>x.id!==event.id);l.excluded=l.excluded.filter(x=>x!==event.id);});},'#f38ba8');
         row.appendChild(btns);box.appendChild(row);

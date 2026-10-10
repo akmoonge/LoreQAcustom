@@ -117,7 +117,10 @@ comments are Korean.
   tidy keep them. JSON: `loreqa_ledgerExport/Import` (`loreqacustom-ledger-v1`); imported
   records whose evidence hashes don't match this chat become manual records.
 - Tidy: `scoutLedgerTidyWork` merges/drops/re-flags core every `ledgerTidyEvery` new
-  records or via "지금 정리"; unmentioned and user-edited records are kept; undo backup.
+  records or via "지금 정리"; unmentioned and protected records are kept; undo backup. Protection is
+  its own flag (`scoutLocked`: `locked`, or a manual record unless `locked:false`), toggled per record
+  ("정리에서 보호"); editing a record no longer protects it. "처음부터 다시 읽기" keeps edited, manual
+  and protected records.
 - Batching: `ledgerBatchTurns` (turns), `ledgerBatchChars` (0 = no cap), `ledgerEvery`
   (auto-read interval). Panel: "이어서 읽기", "처음부터 다시 읽기", "기록 두고 다시 훑기"
   (resets read position; `rescanPrev` lets "읽기 중지" roll it back), "시작 위치" input.
