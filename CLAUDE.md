@@ -87,8 +87,8 @@ comments are Korean.
 
 ### Divergence ledger (분기모드)
 
-- Extraction: `scoutLedgerSyncWork` → `scoutLedgerExtractBatch` (extract + coverage
-  audit) → `scoutLedgerExtractRequest` → `scoutLedgerValidate(…, {lenient:true})`.
+- Extraction: `scoutLedgerSyncWork` → `scoutLedgerExtractBatch` (extract, + coverage
+  audit only when `ledgerAudit` is on; default off, it doubles the requests) → `scoutLedgerExtractRequest` → `scoutLedgerValidate(…, {lenient:true})`.
   Evidence quotes must be substrings of the message (normalized for quotes/whitespace);
   bad events are dropped, not the whole batch; one corrective retry.
 - Prompt = `LOREQA_PROMPTS.ledger` (gate A/B/C) + locked JSON part from

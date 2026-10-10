@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.26
+//@version 3.2.27
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -120,6 +120,7 @@ const LOREQA_DEFAULTS = {
     inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
     ledgerEvery: 1,      // 분기 자동 읽기: 안 읽은 대화가 N턴 쌓이면 읽음 (1 = 매 턴)
     ledgerDeferLatest: 1, // 가장 최근 응답은 다음 턴에 읽음 (번역·상태창 등 후처리가 끝난 뒤)
+    ledgerAudit: 0,       // 분기 2차 검토: 묶음마다 빠뜨린 변화를 한 번 더 찾음 (요청 두 배)
     ledgerBatchTurns: 2, // 분기 읽기 한 묶음의 턴 수 (사용자+응답 = 1턴)
     ledgerBatchChars: 0, // 분기 읽기 한 묶음의 글자 수 상한 (0 = 없음, 턴 수로만)
     flowOriginal: 0,     // 전개모드: 플레이어 OC 규칙
@@ -261,7 +262,7 @@ function loreqa_statsSettings() {
         fameTier: c.fameTier || '', env: { ctx: c.envCtx, prompt: c.envPrompt, out: c.envOut, in: c.envIn, lang: c.envLang, rule: c.envRule || {} },
         modes: pick(['modeChar', 'modeSet', 'modeBranch', 'modeFlow', 'instrOnly']),
         sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'canonStance', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
-        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'beatCount', 'sceneTurns', 'sceneSecretMax', 'ledgerDeferLatest']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
+        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'beatCount', 'sceneTurns', 'sceneSecretMax', 'ledgerDeferLatest', 'ledgerAudit']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
         qa: { char: { lore: mc.char.lore, search: mc.char.search, verifySearch: mc.char.verifySearch }, set: { lore: mc.set.lore, search: mc.set.search, verifySearch: mc.set.verifySearch } },
         apiTypes: { main: c.apiType, branch: c.branchApi || '', flow: c.flowApi || '', jump: c.jumpApi || '', char: mc.char.modeApi || '', set: mc.set.modeApi || '' },
     };
@@ -9809,6 +9810,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkToggle(secSet,'compLedger','분기 추적','응답 후 원작과 달라진 사건을 기록');
     loreqa_trkToggle(secSet,'branchOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC. OC 행동이 만든 변화를 분기로 인정');
     secSet.appendChild(loreqa_createRow('메인 모델 주입',loreqa_createSelect('canon-trk-branchMainTier',[{value:'3',label:'★ 우선 + 남는 만큼'},{value:'1',label:'핵심만'},{value:'2',label:'전부'},{value:'0',label:'끔'}],String(loreqa_cfg.branchMainTier??3),async v=>{loreqa_cfg.branchMainTier=Number(v);await loreqa_saveConfig();}),'보조 모델(인물·세계관 Q&A, 시점 가드·서사 가이드)에는 항상 전부. 메인 본문 요청에는 ★ 우선 + 남는 만큼(★를 먼저 다 넣고 "메인 분기 블록 글자 수" 안에서 나머지를 최신부터 채움, 권장) / ★핵심 기록만 / 전부(넘치면 오래된 것부터 빠짐) / 안 넣음'));
+    loreqa_trkToggle(secSet,'ledgerAudit','2차 검토','묶음마다 같은 대화를 이미 뽑은 기록과 함께 다시 보내 빠뜨린 변화만 더 찾음. 분기 추출 요청이 두 배. 효과는 원클릭 세팅의 사용 통계 ledger.auditAdded(2차 검토가 더 찾은 수)로 확인');
     loreqa_trkToggle(secSet,'ledgerDeferLatest','최신 응답은 다음 턴에 읽기','응답 뒤 번역(GigaTrans)·상태창·삽화 플러그인이 마지막 메시지를 고쳐도 다시 읽지 않도록, 가장 최근 응답은 다음 턴에 읽음. 분기 기록이 한 턴 늦게 반영되지만 메인 모델은 최근 대화를 직접 봄. 끄면 응답 직후 바로 읽음 ("이어서 읽기"도 같은 기준)');
     loreqa_trkToggle(secSet,'inheritBranch','브랜치 · 복사본 이어받기','Risu에서 브랜치를 따거나 채팅을 복사하면, 새 채팅에 기록이 없을 때 원본 채팅의 분기 기록(분기점 앞까지) · 전개 위치 · 위치별 메모 · 고정 변경 기록을 한 번 복사. 원본이 분기점보다 더 진행했으면 위치는 다시 판정');
     right.appendChild(secSet);
@@ -10193,9 +10195,13 @@ function scoutLedgerParseJson(raw) {
 }
 async function scoutLedgerExtractBatch(payload, batch, start, ledger, outputBudget=8192) {
     const first=await scoutLedgerExtractRequest(payload,batch,start,ledger,outputBudget);
-    // One bounded independent coverage check per batch. Both passes must validate before progress is saved.
-    const auditPayload={...payload,coverage_audit:true,already_extracted_this_batch:first.map(({entity,dimension,category,change,after})=>({entity,dimension,category,change,after}))};
-    const more=await scoutLedgerExtractRequest(auditPayload,batch,start,ledger,outputBudget);
+    // 2차 검토 (ledgerAudit, 기본 끔): 같은 묶음을 이미 뽑은 기록과 함께 다시 보내 빠뜨린 변화만 더 찾는다. 요청이 묶음마다 두 배가 된다.
+    //   묶음이 작으면(응답 2천 토큰이면 2턴) 본 추출만으로도 덜 놓친다. 효과는 사용 통계의 ledger.auditAdded 로 확인.
+    let more=[];
+    if(Number(loreqa_cfg.ledgerAudit)===1){
+        const auditPayload={...payload,coverage_audit:true,already_extracted_this_batch:first.map(({entity,dimension,category,change,after})=>({entity,dimension,category,change,after}))};
+        more=await scoutLedgerExtractRequest(auditPayload,batch,start,ledger,outputBudget);
+    }
     const combined=[...first];
     for(const event of more)if(!combined.some(e=>e.id===event.id||(e.entity===event.entity&&e.dimension===event.dimension&&e.after===event.after)))combined.push(event);
     loreqa_stat('ledger.batch');loreqa_stat('ledger.batch.msgs',batch.length);loreqa_stat('ledger.found',first.length);loreqa_stat('ledger.auditAdded',combined.length-first.length);if(!combined.length)loreqa_stat('ledger.batch.empty');
