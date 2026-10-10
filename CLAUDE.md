@@ -111,7 +111,10 @@ comments are Korean.
   (needs the user's DB permission; Risu's own `personaPrompt` key is not exposed to plugins, chat-bound
   personas may differ); `loreqa_personaLast` keeps why it failed, "페르소나 확인" shows it.
   OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
-  that is long-term memory's job, not the divergence ledger's.
+  that is long-term memory's job, not the divergence ledger's. The locked part also defines gate C: the
+  canon element must be what changed or what is affected; a canon character who only tells / warns /
+  witnesses / is present does not count (a record about an invented bandit fort passed because Kagome
+  told the OC about it). Tidy's locked part drops such records too.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
   latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
@@ -120,7 +123,8 @@ comments are Korean.
 - Hand-written records (`loreqa_manualEvent`): no evidence, `edited`+`manual`, so re-reads and
   tidy keep them. JSON: `loreqa_ledgerExport/Import` (`loreqacustom-ledger-v1`); imported
   records whose evidence hashes don't match this chat become manual records.
-- Tidy: `scoutLedgerTidyWork` merges/drops/re-flags core every `ledgerTidyEvery` new
+- Tidy: `scoutLedgerTidyWork` merges/drops/re-flags core every `ledgerTidyEvery` (default 20; the
+  calculator sets main-block records × `tidyFill` 0.5, 8–60) new
   records or via "지금 정리"; unmentioned and protected records are kept; undo backup. Protection is
   its own flag (`scoutLocked`: `locked`, or a manual record unless `locked:false`), toggled per record
   ("정리에서 보호"); editing a record no longer protects it. "처음부터 다시 읽기" keeps only protected records

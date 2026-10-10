@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.30
+//@version 3.2.31
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -102,7 +102,7 @@ const LOREQA_DEFAULTS = {
     branchAuthorNote: 0, // 분기 추출에 작가의 노트 첨부
     branchMainTier: 3,   // 메인 모델 주입: 0 끔 / 1 핵심만 / 2 전부 / 3 ★ 우선 + 남는 만큼 (글자 수 상한 안). 보조 모델에는 항상 전부
     branchPdf: 0,        // 분기 추출 요청을 PDF로 전송
-    ledgerTidyEvery: 8,  // 새 분기 기록 N건마다 장부 자동 정리 (0 = 끔)
+    ledgerTidyEvery: 20, // 새 분기 기록 N건마다 장부 자동 정리 (0 = 끔). 원클릭 세팅 계산기가 메인 분기 블록 크기로 정함
     // 길이 · 개수 상한 (0 = 제한 없음)
     qaMemoQChars: 300,   // 위치별 원작 메모: 질문 저장 글자 수
     qaMemoAChars: 240,   // 위치별 원작 메모: 답 저장 글자 수 (반복 방지용 요지)
@@ -556,6 +556,8 @@ const LOREQA_ENV_RULE = {
     sceneTokens: 8000,   // 장면 판단이 읽을 대화량 (장면이 바뀔 때만: 누가 어디 있는지 알 만큼)
     batchTokens: 6000,   // 분기 추출 한 묶음에 보낼 대화량 (묶음이 크면 놓치고 기록이 섞인다: 응답 2천 토큰이면 2턴)
     mainDivShare: 0.05,  // 메인 분기 블록이 쓸 컨텍스트 몫
+    recordTokens: 80,    // 분기 기록 1건의 대략적인 크기 (메인 블록에 들어가는 모양 기준)
+    tidyFill: 0.5,       // 메인 분기 블록이 이만큼 찰 만한 새 기록이 쌓이면 정리 (넘치면 오래된 기록부터 빠지므로 그 전에)
     charsPerToken: { en: 4, ko: 1.5, ja: 1.5, zh: 1.2 },
 };
 // 고급 칸에서 사용자가 바꿀 수 있는 기준 (envRule 에 저장, 비우면 기본값)
@@ -567,6 +569,8 @@ const LOREQA_ENV_RULE_UI = [
     ['batchTokens', '분기 한 묶음 대화량 (토큰)', '크면 요청 수가 줄고, 작으면 꼼꼼히 읽음'],
     ['maxGap', '공백 허용 턴', '분기 기록에도 Q&A 대화 창에도 없는 턴을 몇 턴까지 허용할지'],
     ['mainDivPct', '메인 분기 블록 비율 (%)', '메인 컨텍스트 중 분기 기록에 쓸 몫'],
+    ['recordTokens', '분기 기록 1건 크기 (토큰)', '장부 자동 정리 간격 계산에 씀'],
+    ['tidyFillPct', '정리 시점 (메인 분기 블록 %)', '새 기록이 메인 분기 블록의 이만큼을 채울 때마다 정리. 높이면 정리를 덜 함'],
     ['pluginTokens', '플러그인 블록 몫 (토큰)', '고정 프롬프트 크기를 넣었을 때, 이 플러그인의 Q&A·위치·가드·가이드 블록으로 따로 뺄 양'],
 ];
 function loreqa_envRule() {
@@ -574,7 +578,7 @@ function loreqa_envRule() {
     for (const [k] of LOREQA_ENV_RULE_UI) {
         const v = Number(u[k]);
         if (u[k] === '' || u[k] == null || !Number.isFinite(v) || v < 0) continue;
-        if (k === 'mainDivPct') r.mainDivShare = v / 100; else r[k] = v;
+        if (k === 'mainDivPct') r.mainDivShare = v / 100; else if (k === 'tidyFillPct') r.tidyFill = v / 100; else r[k] = v;
     }
     return r;
 }
@@ -602,10 +606,11 @@ function loreqa_envCalc(p, R = loreqa_envRule()) {
             sceneTurns: clamp(R.sceneTokens / turn, 2, 6),
             posReadChars: Math.round(R.posTokens * cpt),
             divMainChars,
+            ledgerTidyEvery: clamp(divMainChars / cpt / R.recordTokens * R.tidyFill, 8, 60),
         },
     };
 }
-const LOREQA_ENV_LABELS = { ledgerEvery: '분기 자동 읽기 간격 (턴)', ledgerBatchTurns: '분기 한 묶음 턴 수', charLogs: '인물모드 1차 참조 턴 수', setLogs: '세계관모드 1차 참조 턴 수', posReadMsgs: '위치 판정 참조 턴 수', sceneTurns: '장면 판단 참조 턴 수', posReadChars: '위치 판정 참조 글자 수', divMainChars: '메인 분기 블록 글자 수' };
+const LOREQA_ENV_LABELS = { ledgerEvery: '분기 자동 읽기 간격 (턴)', ledgerBatchTurns: '분기 한 묶음 턴 수', charLogs: '인물모드 1차 참조 턴 수', setLogs: '세계관모드 1차 참조 턴 수', posReadMsgs: '위치 판정 참조 턴 수', sceneTurns: '장면 판단 참조 턴 수', posReadChars: '위치 판정 참조 글자 수', divMainChars: '메인 분기 블록 글자 수', ledgerTidyEvery: '장부 자동 정리 (새 기록 N건마다)' };
 function loreqa_envCurrent(k) {
     const mc = loreqa_ensureModeCfg();
     if (k === 'charLogs') return mc.char.maxLogs;
@@ -624,7 +629,7 @@ async function loreqa_envApply(values) {
 }
 function loreqa_buildQuickEnv() {
     const sec = loreqa_section('내 사용 환경으로 N값 맞추기');
-    sec.appendChild(loreqa_el('div', 'loreqa-muted', 'Risu에서 쓰는 최대 컨텍스트, 고정 프롬프트 크기, 보통 응답·입력 길이(토큰), 대화 언어를 넣고 계산하면, 분량에 따라 정해지는 값(분기 읽기 간격·묶음 크기, 인물·세계관·위치 판정이 읽을 턴 수, 글자 수 상한)을 근사로 계산합니다. 위치 판정 간격과 장부 정리 간격처럼 이야기 속도에 달린 값은 바꾸지 않습니다.'));
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', 'Risu에서 쓰는 최대 컨텍스트, 고정 프롬프트 크기, 보통 응답·입력 길이(토큰), 대화 언어를 넣고 계산하면, 분량에 따라 정해지는 값(분기 읽기 간격·묶음 크기, 인물·세계관·위치 판정이 읽을 턴 수, 글자 수 상한)을 근사로 계산합니다. 장부 자동 정리 간격은 메인 분기 블록에 기록이 몇 건 들어가는지로 정합니다. 위치 판정 간격처럼 이야기 속도에 달린 값은 바꾸지 않습니다.'));
     const numIn = (val, ph) => { const n = loreqa_el('input', 'loreqa-input'); n.type = 'number'; n.min = '0'; n.placeholder = ph; n.value = val ?? ''; if (n.value === '0') n.value = ''; n.style.width = '110px'; return n; };
     const ctxIn = numIn(loreqa_cfg.envCtx, '예: 32000'), promptIn = numIn(loreqa_cfg.envPrompt, '비우면 40%'), outIn = numIn(loreqa_cfg.envOut, '예: 800'), inIn = numIn(loreqa_cfg.envIn, '예: 150');
     const langSel = loreqa_createSelect('loreqa-env-lang', LOREQA_ENV_LANGS, loreqa_cfg.envLang || 'en', () => reset());
@@ -8492,7 +8497,8 @@ For (a), "invalidates" MUST state the original's version that no longer holds. F
 // 기존 기록 바로잡기: 관문(A/B/C)과 '기록하지 않음' 목록보다 먼저. 합류는 소속 변화로 남는데 헤어짐은 '여행'으로 걸러져
 //   이미 끝난 상태가 계속 참으로 남던 문제 (예: 小夜 · 犬夜叉一行との関係 = 동행). 잠긴 부분에 넣어 고친 프롬프트에도 적용된다.
 const SCOUT_LEDGER_KEEP_TRUE=`KEEPING THE LEDGER TRUE (this overrides the DIVERGENCE GATE and the "Do NOT record" list): "ledger" is passed to other models as current fact, so a record that is no longer true does more harm than a missing one. For every record in "ledger", check whether a new message ends, reverses or changes that state: someone leaves, rejoins or parts from a group, is released or captured, recovers, reconciles, changes sides, moves out, or a relationship or arrangement ends. If so, emit an event with the SAME entity and the SAME dimension whose "after" is the state as it is now (for example "allied with Inuyasha's group, but now travelling alone, apart from them"), even if the new state alone would not pass the gate. When one change makes several records untrue (A parts from B: A's record and B's record), update each of them. In "review", name any ledger record a new message makes untrue. Do not use this rule to add facts that are not already in the ledger.
-NOTHING BEYOND THE EVIDENCE: every specific detail in a record (a family relation and which parent it goes through, half- or step-, a title, a date, a number, a place, a name, a reason) must be stated in the evidence quotes or in the player settings (player_persona). "Write each record in detail" means include everything the evidence says, never fill gaps. If a quote only says "your brother", write "brother", not 異母兄 or 異父兄; if player_persona states the relation, use that. Never guess from the original work what the story has not said.`;
+NOTHING BEYOND THE EVIDENCE: every specific detail in a record (a family relation and which parent it goes through, half- or step-, a title, a date, a number, a place, a name, a reason) must be stated in the evidence quotes or in the player settings (player_persona). "Write each record in detail" means include everything the evidence says, never fill gaps. If a quote only says "your brother", write "brother", not 異母兄 or 異父兄; if player_persona states the relation, use that. Never guess from the original work what the story has not said.
+WHAT COUNTS AS INVOLVING THE ORIGINAL (gate C): the element from the original must be what changed or what the change affects. A canon character who only speaks, tells, warns, witnesses or is present does not count. A canon character telling the player's character about people, places, groups or plans invented in this story is not a divergence; record it only if it changes something about the original (a canon character's own situation, side, relationship or knowledge of the original's facts or secrets). A generic word (bandits, demon slayers, villagers, an official's office) is not an element of the original unless the story clearly means the specific group from the original. "knowledge_anchor" is only for what a canon character knows, or who knows a fact or secret of the original.`;
 function scoutLedgerExtractRule(){
     const lang=scoutLang();
     const oc=scoutOpt('original')?scoutOcRule('')+' The player OC is not a canon character: a change the OC causes is recorded only for what it changes in the original story (canon characters, canon events, canon plot), never for the OC\'s own facts or who knows them.':'';
@@ -8865,7 +8871,7 @@ function scoutLedgerSplitEnd(messages,start,end) {
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
 const scoutLedgerAbort=new Set(); // 읽기 중지 요청
 const SCOUT_TIDY_LOCKED=`Keep family relations, lineage and identities consistent across records. Where records disagree on such a detail (for example one says 異母兄 and another 異父兄), keep only what their source_messages evidence actually supports, otherwise the less specific term; never add a detail no record supports.
-A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" are protected by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
+A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" are protected by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nDrop a record whose only link to the original is a canon character who told, warned, witnessed or was present, while what changed concerns only the player's character and people, places, groups or plans invented in this story (unless it is locked).\nEach record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
@@ -9838,7 +9844,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkNum(secMore,'자동 읽기 간격 (턴)','ledgerEvery',1,1,'응답 뒤 분기 장부를 몇 턴마다 읽을지. 1이면 매 턴, 3이면 안 읽은 대화가 3턴 쌓였을 때 한꺼번에. 전체 읽기 버튼은 간격과 상관없이 바로 읽음');
     loreqa_trkNum(secMore,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
     loreqa_trkNum(secMore,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
-    loreqa_trkNum(secMore,'장부 자동 정리','ledgerTidyEvery',8,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능)');
+    loreqa_trkNum(secMore,'장부 자동 정리','ledgerTidyEvery',20,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능). 원클릭 세팅 계산기로도 정함');
     loreqa_trkNum(secMore,'고정 변경 기록 글자 수','fixedChars',3000,0,'고정 변경 기록을 이만큼까지 주입. 넘는 뒷부분은 안 들어감. 0이면 제한 없음');
     loreqa_trkNum(secMore,'메인 분기 블록 글자 수','divMainChars',6000,0,'메인 본문 요청에 넣는 분기 기록 목록 길이 (고정 변경 기록은 따로). 넘는 기록은 빠짐. 0이면 제한 없음');
     loreqa_trkNum(secMore,'보조 분기 블록 글자 수','divHelperChars',12000,0,'인물·세계관 Q&A에 넣는 분기 기록 목록 길이. 0이면 제한 없음');
