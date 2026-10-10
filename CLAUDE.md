@@ -122,11 +122,12 @@ comments are Korean.
   records or via "지금 정리"; unmentioned and protected records are kept; undo backup. Protection is
   its own flag (`scoutLocked`: `locked`, or a manual record unless `locked:false`), toggled per record
   ("정리에서 보호"); editing a record no longer protects it. "처음부터 다시 읽기" keeps only protected records
-  (manual ones are protected by default).
+  (manual ones are protected by default) plus records whose evidence is all before `startAt`; with a
+  start position it is labelled "N번부터 다시 읽기".
 - Batching: `ledgerBatchTurns` (turns), `ledgerBatchChars` (0 = no cap), `ledgerEvery`
   (auto-read interval). Panel: "이어서 읽기", "처음부터 다시 읽기", "기록 두고 다시 훑기"
   (resets read position; `rescanPrev` lets "읽기 중지" roll it back), "시작 위치" input.
-  "시작 위치로 저장" sets `ledger.startAt`: `scoutLedgerSyncWork` never reads before it (redo, rescan
+  "여기부터 읽기" sets `ledger.startAt` and reads from that number: `scoutLedgerSyncWork` never reads before it (redo, rescan
   and rewinds included); "시작 위치 해제" removes it.
 - `scoutLedgerReconcile` rewinds when an earlier message changed; it logs the index.
   `scoutMessageHash` hashes `scoutHashNorm(text)` (no whitespace / tags / markdown / width

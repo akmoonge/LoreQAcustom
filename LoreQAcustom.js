@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.28
+//@version 3.2.29
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -114,7 +114,8 @@ const LOREQA_DEFAULTS = {
     divMainChars: 6000,  // 메인 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
     divHelperChars: 12000, // 보조 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
     helperDivMax: 60,    // 보조 모델(Q&A · 가드 · 가이드)에 넘기는 분기 기록 수
-    attachChars: 4000,   // 페르소나 · 작가의 노트 첨부 글자 수
+    attachChars: 0,      // 페르소나 · 작가의 노트 첨부 글자 수 (0 = 제한 없음)
+    attachV: 1,          // 1 = 첨부 글자 수 기본값을 제한 없음으로 바꾼 뒤의 설정 (옛 기본값 4000 은 한 번 0 으로)
     briefLoreN: 8,       // 원작 브리핑에 넣는 로어 개수
     briefLoreChars: 1800, // 원작 브리핑 로어 항목당 글자 수
     inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
@@ -314,6 +315,8 @@ async function loreqa_loadConfig() {
             // 서사 가이드 강도(참고만 / 유도)를 원작 흐름 성향으로: 참고만 → 균형, 유도 → 원작 우선
             // 진행 상황 창이 Yumi Provider Manager 창(오른쪽 위)을 가리지 않게, 3.2.17 기본값(오른쪽 위)을 한 번 오른쪽 아래로
             if (!('floatPosV' in parsed)) { if (!parsed.floatPos || parsed.floatPos === 'tr') loreqa_cfg.floatPos = 'br'; loreqa_cfg.floatPosV = 1; }
+            // 첨부 글자 수: 예전 기본값 4000 은 긴 페르소나를 잘랐다. 한 번 제한 없음(0)으로
+            if (!('attachV' in parsed)) { if (Number(parsed.attachChars) === 4000) loreqa_cfg.attachChars = 0; loreqa_cfg.attachV = 1; }
             if (!('canonStance' in parsed)) loreqa_cfg.canonStance = Number(parsed.guideStrength) === 1 ? 'canon' : 'balance';
             // apiProfiles가 없거나 부분적인 경우 기본값 병합
             if (!loreqa_cfg.apiProfiles || typeof loreqa_cfg.apiProfiles !== 'object') {
@@ -9114,7 +9117,7 @@ async function scoutLedgerPanel(){
     const status=document.createElement('p');status.textContent=scoutLedgerStatus.get(scope)||'저장된 변경 기록';box.appendChild(status);
     const all=document.createElement('button');all.textContent='기존 대화 전체 읽기 / 이어서 읽기';all.onclick=async()=>{if(all.disabled)return;all.disabled=true;try{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');await scoutLedgerSync(fresh,Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{all.disabled=false;}};box.appendChild(all);
     const rescan=document.createElement('button');rescan.textContent='인지 기록 포함 과거 재검사';rescan.onclick=async()=>{rescan.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);scoutLedgerReconcile(l,scoutCompleted(fresh));if(!l.rescanPrev||l.hashes.length>l.rescanPrev.length)l.rescanPrev=l.hashes;l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{rescan.disabled=false;}};box.appendChild(rescan);
-    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='🔒 보호한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('🔒 보호한 기록만 남기고 나머지 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 고친 기록도 보호하지 않았으면 지워집니다. 메시지 수만큼 API 요청이 다시 발생합니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>scoutLocked(e));l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
+    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='🔒 보호한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{const st0=Number((await scoutLedgerLoad(scope)).startAt)||0;if(!confirm(st0?`${st0}번부터 끝까지 다시 읽습니다. ${st0}번 앞 메시지에서 나온 기록과 🔒 보호한 기록은 남고, 나머지 기록은 지워집니다. 고친 기록도 보호하지 않았으면 지워집니다. 다시 읽는 메시지 수만큼 API 요청이 발생합니다. 계속할까요?`:'🔒 보호한 기록만 남기고 나머지 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 고친 기록도 보호하지 않았으면 지워집니다. 메시지 수만큼 API 요청이 다시 발생합니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);const st=Number(l.startAt)||0;l.events=l.events.filter(e=>scoutLocked(e)||(st>0&&e.evidence?.length>0&&e.evidence.every(v=>v.index<st)));l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
     const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 🔒 보호한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
     scoutLedgerLogButton(box,scope);
@@ -9134,23 +9137,19 @@ async function scoutLedgerPanel(){
         // 수동 시작 위치: 이 번호 앞까지는 읽은 것으로 치고 이 번호부터 읽는다
         const from=document.createElement('input');from.type='number';from.min='0';from.className='loreqa-input';from.style.cssText='width:90px';
         const fromInfo=document.createElement('span');fromInfo.style.cssText='font-size:11px;color:#a6adc8';
-        (async()=>{try{const l=await scoutLedgerLoad(scope),n=scoutCompleted(snap).length;from.max=String(n);from.value=String(Math.min(l.startAt||l.hashes.length,n));fromInfo.textContent=`읽음 ${l.hashes.length} / 전체 ${n}개 메시지`+(l.startAt?` · 저장된 시작 위치 ${l.startAt}번 (그 앞은 읽지 않음)`:'');}catch(e){}})();
-        const go=document.createElement('button');go.textContent='이 번호부터 읽기';go.title='입력한 메시지 번호 앞까지는 읽은 것으로 치고, 그 번호부터 끝까지 읽습니다. 기록은 지우지 않습니다. 상태줄의 "인덱스" 숫자와 같은 번호입니다.';
+        (async()=>{try{const l=await scoutLedgerLoad(scope),n=scoutCompleted(snap).length;from.max=String(n);from.value=String(Math.min(l.startAt||l.hashes.length,n));fromInfo.textContent=`읽음 ${l.hashes.length} / 전체 ${n}개 메시지`+(l.startAt?` · 저장된 시작 위치 ${l.startAt}번 (그 앞은 읽지 않음)`:'');
+            if(l.startAt){redo.textContent=`${l.startAt}번부터 다시 읽기`;redo.title=`${l.startAt}번부터 끝까지 새 기준으로 다시 판정합니다. ${l.startAt}번 앞 메시지에서 나온 기록과 🔒 보호한 기록은 남기고, 나머지는 지웁니다. 다시 읽는 메시지 수만큼 API 요청이 발생합니다.`;}}catch(e){}})();
+        // 여기부터 읽기: 이 번호를 시작 위치로 저장하고(이 채팅은 그 앞을 읽지 않음) 그 번호부터 끝까지 읽는다. 기록은 지우지 않는다
+        const go=document.createElement('button');go.textContent='여기부터 읽기';go.title='입력한 번호를 이 채팅의 시작 위치로 저장하고 그 번호부터 끝까지 읽습니다. 그 앞 메시지는 다시 읽기 · 다시 훑기 · 되감기 때도 읽지 않습니다. 기록은 지우지 않습니다. 0 이면 시작 위치를 지우고 처음부터 읽습니다. 상태줄의 "인덱스" 숫자와 같은 번호입니다.';
         go.onclick=async()=>{go.disabled=true;try{
             const n=Math.max(0,parseInt(from.value)||0);
-            await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const msgs=scoutCompleted(fresh);const l=await scoutLedgerLoad(scope);const k=Math.min(n,msgs.length);l.hashes=msgs.slice(0,k).map(scoutMessageHash);delete l.rescanPrev;await scoutLedgerSave(l);});
-            scoutLedgerStatus.set(scope,`메시지 ${n}번부터 읽기 시작`);await scoutLedgerPanel();
+            await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const msgs=scoutCompleted(fresh);const l=await scoutLedgerLoad(scope);l.startAt=n||undefined;l.hashes=msgs.slice(0,Math.min(n,msgs.length)).map(scoutMessageHash);delete l.rescanPrev;await scoutLedgerSave(l);});
+            scoutLedgerStatus.set(scope,n?`시작 위치를 ${n}번으로 저장하고 그 번호부터 읽습니다.`:'시작 위치 없이 처음부터 읽습니다.');await scoutLedgerPanel();
             await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();
         }catch(e){status.textContent=String(e.message||e);}finally{go.disabled=false;}};
-        // 시작 위치 저장: 이 채팅은 이 번호 앞을 읽지 않는다 (처음부터 다시 읽기도 여기서 시작). 해제하면 다시 0번부터
-        const keep=document.createElement('button');keep.textContent='시작 위치로 저장';keep.title='이 채팅은 입력한 번호 앞의 메시지를 읽지 않습니다. 처음부터 다시 읽기 · 기록 두고 다시 훑기 · 앞쪽 메시지가 바뀌어 되감길 때도 이 번호에서 시작합니다. 기록은 지우지 않습니다.';
-        keep.onclick=async()=>{keep.disabled=true;try{const n=Math.max(0,parseInt(from.value)||0);
-            await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const msgs=scoutCompleted(fresh);const l=await scoutLedgerLoad(scope);l.startAt=n||undefined;if(n>l.hashes.length){l.hashes=msgs.slice(0,Math.min(n,msgs.length)).map(scoutMessageHash);delete l.rescanPrev;}await scoutLedgerSave(l);});
-            scoutLedgerStatus.set(scope,n?`시작 위치를 ${n}번으로 저장했습니다. 이 채팅은 그 앞을 읽지 않습니다.`:'시작 위치를 해제했습니다.');await scoutLedgerPanel();
-        }catch(e){status.textContent=String(e.message||e);}finally{keep.disabled=false;}};
-        const unkeep=document.createElement('button');unkeep.textContent='시작 위치 해제';unkeep.title='저장한 시작 위치를 지웁니다. 다음 처음부터 다시 읽기는 0번부터 읽습니다. 지금 읽은 위치와 기록은 그대로입니다.';
+        const unkeep=document.createElement('button');unkeep.textContent='시작 위치 해제';unkeep.title='저장한 시작 위치를 지웁니다. 다음 다시 읽기는 0번부터 읽습니다. 지금 읽은 위치와 기록은 그대로입니다.';
         unkeep.onclick=async()=>{unkeep.disabled=true;try{await scoutLedgerSerial(async()=>{const l=await scoutLedgerLoad(scope);delete l.startAt;await scoutLedgerSave(l);});scoutLedgerStatus.set(scope,'시작 위치를 해제했습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{unkeep.disabled=false;}};
-        const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,keep,unkeep,fromInfo);
+        const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,unkeep,fromInfo);
         const fl=document.createElement('span');fl.textContent='시작 위치';fl.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';bar.append(fl,fromRow);
         group('정리',[tidy,undo]);
         const expBtn=document.createElement('button');expBtn.textContent='JSON 내보내기';expBtn.title='이 채팅의 분기 기록 전체(근거·제외 표시 포함)를 JSON 파일로 저장합니다.';
@@ -9906,7 +9905,7 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
     loreqa_trkNum(secMore,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
     loreqa_trkNum(secMore,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
-    loreqa_trkNum(secMore,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'첨부 글자 수','attachChars',0,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음 (기본)');
     right.append(secSet,secJump,secModel,charSec,secMore);
     // 세계 상태표 개편(3.2.17) 전에 직접 고친 프롬프트는 새 방식과 안 맞을 수 있다. 고친 것은 그대로 두고 알리기만 한다
     {const old={world:'세계 상태표 생성 (출력 형식은 이제 자동으로 붙지만, 예전 내용 지시가 새 규칙과 부딪힐 수 있음)',sceneJudge:'장면 판단',jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면을 다시 판단하지 않음)',injJump:'위치 블록 안내 (시간 점프)'};
