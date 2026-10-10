@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.0
+//@version 3.3.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.0';
+const LOREQA_VER = '3.3.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7272,7 +7272,7 @@ const LOREQA_PROMPTS = {
 
 Instructions:{{sceneInstr}}
 - For each canon character, describe:{{analysisItems}}
-- Do not include information about "{{personaName}}" (the player)
+- Do not describe "{{personaName}}" (the player's character) herself, but do describe how each canon character speaks to and treats her NOW: take that from their relationship in [Confirmed Changes in This Story] and the chat (what they call each other, trust, contempt, protectiveness), not from the original, where she does not exist
 - Scope: exclude setting, worldbuilding and plot; focus only on characterization (speech and attitude). (Using tools to look up character information is still strongly encouraged.)
 - If more information is needed, use the provided tools (only when no tools are provided, give your best analysis from prior knowledge){{searchRule}}{{mcpRule}}
 - Write the output in {{language}}{{lengthRule}}{{extraRule}}` } },
@@ -7284,6 +7284,7 @@ Instructions:
 - Read the chat log and provide the one piece of "{{source}}" canon setting most needed for the next scene
 - Concrete settings needed for the story: character information, worldbuilding, history, places, factions, power systems, etc.
 - Prefer settings not yet mentioned in the chat over ones already mentioned
+- Choose for where the story actually is: the player's character may be far from the original's main cast, so pick the setting her next scene needs (the place, people, creatures or objects she is dealing with), not the original's main plot
 - Do not summarize or analyze the chat; provide the setting material directly
 - Cite concrete canon details rather than vague generalities
 - Do not include information about "{{personaName}}" (the player){{searchRule}}{{mcpRule}}
@@ -7359,13 +7360,35 @@ Evidence, in order of trust:
 1. In-story dates and times (if given). Use them when the original's chronology for that period is documented. Many originals have vague, inconsistent or no dates: in that case do not force a match by date, and rely on 2 and 3.
 2. Story-progress markers in the chat: which original events are referred to as already past or still ahead, characters' ages or school years, terms, seasons, holidays, story arcs or locations that only exist in a certain period.
 3. Never match by topical similarity. A roleplay scene that resembles, or talks about, a later original scene does NOT move the timeline forward, and a divergent roleplay event does not map to the original event it resembles.` } },
-    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'mediumRule'],
-        locked: '뒤에 출력 형식([PUBLIC] / [HIDDEN] / [BEATS] 세 칸, 줄 형식, 이야기 인물 위치 금지, 언어)이 자동으로 붙음 (그대로 읽어서 나누므로 잠김). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
-        def: { en: `You describe the CURRENT STATE OF THE WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
-This is NOT the script of this story. It is where the original world stands right now, so that a writer can keep it moving in the background while the story's own characters (including the player's original character) may be somewhere else doing other things.
-Use web search to check the original at this point instead of relying on memory.
-The story's confirmed changes (confirmed_changes) override the original: if a story character has joined, left, replaced, saved or killed someone, show the result.
-Rules for the current state and the secrets: only what is true at this point; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out. Upcoming events of the original are not current state: they go only in the separate list of next events.` } },
+    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'mediumRule', 'mediumName', 'count', 'beats', 'language'],
+        locked: '뒤에 출력 형식([NOW] / [BEATS] / [PUBLIC] / [HIDDEN] 네 칸의 줄 모양과 표식)만 자동으로 붙음 (그대로 읽어서 나누므로 잠김). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
+        def: { en: `You write the STATE OF THE ORIGINAL WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
+This is not the script of this story. It tells a writer where the original world stands right now and what the original does next, so the world can keep moving in the background while the story's own characters (the player's character and anyone the story invented) may be elsewhere doing other things.
+
+1. SOURCE AND SEARCH
+- Describe {{mediumName}} only. Adaptations differ (anime-original episodes and arcs, changed outcomes, films, games): never use an event, detail or outcome that exists only in another version. Many web summaries describe anime episodes; use one only after checking that the same thing happens in {{mediumName}} at that chapter.
+- Search first, do not rely on memory: find the list of chapters (or episodes) right after current_point by their numbers, with a summary of each, from a source that covers {{mediumName}} chapter by chapter. Take the cut and the beats from those summaries. Character pages and anime episode pages are not a source for beats.
+- confirmed_changes are this story's changes and override the original. events_already_played already happened in this story.
+
+2. [NOW]: the cut
+The last event of the original that has already happened at this point, and the first that has not. Everything else must agree with this cut: before it is current state or secret, after it is a beat.
+
+3. [BEATS]: what the original does next (at most {{beats}}, in order, starting with the "next" event of [NOW])
+- Each beat comes from the summary of the chapter it names; if you cannot tie an event to a chapter of {{mediumName}}, leave it out. Skip events_already_played.
+- The event part says how it starts and who acts; the outcome goes only in "then".
+- "present" names the people who must physically be there, not conditions.
+- "changed" applies confirmed_changes to the event: a renamed or replaced character, a relationship that already exists, a secret already known, and how the event would play out differently here. "as canon" when nothing changes. Never invent changes that confirmed_changes do not support.
+- If confirmed_changes make the event impossible as written, keep it and mark it broken with a short reason.
+
+4. [PUBLIC]: the original world off-screen (at most {{count}} lines)
+- One line per major ORIGINAL character or faction active now: where they are and what they are doing or heading toward, as of the cut. Present tense; no backstory, motives or mechanics; nothing after the cut; nothing [NOW] or a beat already says.
+- Never say where the story's own characters are or whom they travel with, and never list them as members of a group: that changes scene by scene and is judged from the story itself. Mention them only where confirmed_changes give an original character or faction a lasting new state (a death, a defection, a new ruler).
+
+5. [HIDDEN]: secrets that could slip (at most 8; none is fine, never fill with weak lines)
+- A concrete fact true at the cut that some characters do not know and could let slip, reveal or act on by mistake, with who does not know and who knows. A plan already in motion that its targets do not know (who has been sent against them, a trap already laid) counts even if [NOW] mentions it.
+- Not secrets: anything placed after the cut (check when the original makes it true: memories regained, sides changed and truths learned later on are not lines here), news someone has not heard yet (a fight won, a technique learned, a place reached), unknown places, vague items ("does not know the whole story of X"), motives, mechanics, weaknesses, future plans.
+- "known to" lists only characters the original shows learning it by the cut, or that confirmed_changes say know it. Never guess who might have found out; drop a name you are not sure of, and the line if no one is sure.
+- Secrets created by the story count only if confirmed_changes state them; never invent new ones.` } },
     sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
         locked: '입력: 번호 붙은 세계 상태 · 숨은 상태 · 원작 비트, 최근 이야기, 이번 유저 입력. 답은 PLACE / PRESENT / SECRETS / READY / NEAR / DONE 여섯 줄 (그대로 읽어서 나눔). 뒤에 ONSCREEN 줄(지금 장면에 들어와 있는 세계 상태 줄 번호) 요청이 자동으로 붙음',
         def: { en: `You read where a story stands right now and match it against the original work's state.
@@ -7710,35 +7733,17 @@ async function loreqa_helperDivergences(snap) {
     catch (e) { return []; }
 }
 // 세계 상태표 출력 형식: 프롬프트를 직접 고친 사용자에게도 항상 붙는다 (예전 형식으로 고쳐 둔 프롬프트 때문에 [BEATS] 가 안 나오던 문제)
-const LOREQA_WORLD_FORMAT = `SOURCE: describe {{mediumName}} only. Adaptations differ (anime-original episodes and arcs, changed outcomes, films, games): never use an event, detail or outcome that exists only in another version. Many web summaries describe the anime episodes; use one only after checking that the same thing happens in {{mediumName}} at that chapter.
-HOW TO SEARCH: first find the list of chapters (or episodes) right after current_point by their numbers, with a summary of each, from a source that covers {{mediumName}} chapter by chapter. Take the beats and the cut from those chapter summaries. Character pages and anime episode pages are not a source for beats.
-OUTPUT FORMAT (this overrides any format given above). Output exactly four sections, in this order, with these tags:
+const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given above). Exactly four sections, in this order, with these tags:
 [NOW]
-- One line: the last event of the original that has ALREADY happened at this point, then "| next:" and the first event that has NOT happened yet. Everything below must agree with this cut: before it is current state or secret, after it is a beat.
-[BEATS] (REQUIRED: always write this section; it is the ONLY place for events after the cut)
-- The next major events of the ORIGINAL after the cut, in order, at most {{beats}}. Format:
-  The first beat is the "next:" event of [NOW].
-  "(<chapter or episode number it happens in, e.g. Ch.195>) <what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / changed: <how confirmed_changes alter this event in this story: who is different, who already knows or is already friends or enemies, what goes differently; write "as canon" if nothing changes> / then: <how it ends in the original, one short clause>"
-  Keep the outcome only in "then:"; the first part says how the event starts, not how it ends.
-  Each beat must come from the summary of the chapter it names; if you cannot tie an event to a chapter of {{mediumName}}, leave it out.
-  "present" names people, not conditions: the ones who have to be physically there.
-  Skip events listed in events_already_played (they already happened in this story).
-  "changed" applies confirmed_changes to the event: a renamed or replaced character, a relationship that already exists, a secret already known. It says how the event would play out differently here, not a new outcome; never invent changes that confirmed_changes do not support.
-  If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
-  If the original has no further events after the cut, write the single line "- none".
+- <the last event of the original that has already happened> | next: <the first event that has not>
+[BEATS]
+- (<chapter or episode number, e.g. Ch.195>) <event: how it starts and who acts> / at: <place> / present: <people who must be there> / changed: <how this story changes it, or "as canon"> / then: <how it ends in the original, one short clause>
+  End a line with "(broken: <short reason>)" when confirmed_changes make it impossible. Write the single line "- none" if the original has no further events.
 [PUBLIC]
-- One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now, as of the cut. Present tense. No backstory, no explanation of motives or mechanics, nothing after the cut.
-  Do not repeat in this section what [NOW] or a beat already says. A character whose only current activity is the [NOW] event or a beat gets no line here.
-  Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Do not list them as members of a group even if confirmed_changes say they joined it. Mention them only where confirmed_changes give an original character or faction a lasting new state such as a death, a defection or a new ruler; joining, leaving or travelling with a group never counts.
+- <original character or faction>: <where they are and what they are doing now>
 [HIDDEN]
-- Concrete facts true at the cut that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 8. Fewer is fine and none is fine: leave the section empty rather than fill it with weak lines.
-  A plan already set in motion at the cut that its targets do not know (who has been sent against them, a trap already laid) is a proper line here, even though [NOW] mentions the event.
-  Not hidden facts: anything [BEATS] above places after the cut (a plan whose next step is a beat is not yet done: say only what is already set up), anything the original develops only later, mere news someone has not heard yet, unknown places, and vague items such as "does not know the whole story of X" or "does not fully understand Y".
-  Check when each fact becomes true in the original: if it only happens after the cut (someone regains memories, changes sides or learns a truth later on), it is not a line here.
-  News is not a secret: someone elsewhere not having heard that a fight was won, a technique learned or a place reached is never a line here.
-  "known to" names only characters the original shows learning the fact by the cut, or confirmed_changes say know it. Never guess who could have found out (by spying, by being nearby); leave out a name you are not sure of, and drop the line if no one is sure.
-  No motives, mechanics, weaknesses or future plans. Secrets created by the story count only if confirmed_changes state them; never invent new ones.
-Every line starts with "- ". Write the lines in {{language}}; keep the four tags and the markers "| next:", "/ at:", "/ present:", "/ changed:", "/ then:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
+- <who does not know> does not know <fact>; known to <who>
+Every line starts with "- ". [BEATS] is required. Write the lines in {{language}}; keep the four tags and the markers "| next:", "/ at:", "/ present:", "/ changed:", "/ then:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
 // 마지막 세계 상태표 생성 실패 이유 (위치 카드에 보여 줌): HTTP 오류 코드, 출력 한도, 또는 형식을 못 읽은 답의 앞부분
 let loreqa_worldErr = '';
 let loreqa_worldNote = ''; // 생성은 됐지만 원작 비트가 빈 경우의 안내

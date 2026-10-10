@@ -154,6 +154,8 @@ comments are Korean.
   Source). Keys `n:<nums>`, `pre:` (before the original starts), `post:`.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
+- World table prompt (3.3.1): all content rules (source/search, NOW, BEATS, PUBLIC, HIDDEN) are in the editable
+  `world` prompt in numbered sections; the locked `LOREQA_WORLD_FORMAT` is only the four-tag line format.
 - 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
   web search, reads no chat turns, only position + ledger): `[PUBLIC]` = what ORIGINAL characters /
   factions are doing now (never the story's own characters' whereabouts: those change scene by
