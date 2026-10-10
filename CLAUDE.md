@@ -115,6 +115,11 @@ comments are Korean.
   canon element must be what changed or what is affected; a canon character who only tells / warns /
   witnesses / is present does not count (a record about an invented bandit fort passed because Kagome
   told the OC about it). Tidy's locked part drops such records too.
+  RELATIONSHIPS (locked): how a canon character feels about / treats the OC is a canon change and its own
+  "relationship with <name>" record, never mixed with knowledge records; time together is not recorded but the
+  resulting change in feelings is; the extractor compares the ledger's relationship record with new messages and
+  updates it when the relationship has moved on (2-turn batches never saw slow arcs: ledger-04 had 21 records,
+  all first meetings / joins / the sword, none about feelings, and Inuyasha was still "confronting" her).
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
   latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
