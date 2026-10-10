@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.25
+//@version 3.2.26
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -550,7 +550,7 @@ const LOREQA_ENV_RULE = {
     setTokens: 6000,     // 세계관모드 1차 질의가 읽을 대화량
     posTokens: 10000,    // 위치 판정이 읽을 대화량 (몇 턴에 한 번이라 넉넉하게: 흩어진 시점 단서)
     sceneTokens: 8000,   // 장면 판단이 읽을 대화량 (장면이 바뀔 때만: 누가 어디 있는지 알 만큼)
-    batchTokens: 12000,  // 분기 추출 한 묶음에 보낼 대화량
+    batchTokens: 6000,   // 분기 추출 한 묶음에 보낼 대화량 (묶음이 크면 놓치고 기록이 섞인다: 응답 2천 토큰이면 2턴)
     mainDivShare: 0.05,  // 메인 분기 블록이 쓸 컨텍스트 몫
     charsPerToken: { en: 4, ko: 1.5, ja: 1.5, zh: 1.2 },
 };
@@ -587,7 +587,7 @@ function loreqa_envCalc(p, R = loreqa_envRule()) {
     if (room < turn) throw Error(`대화가 들어갈 자리가 거의 없습니다 (약 ${Math.max(0, Math.round(room))}토큰). 고정 프롬프트나 응답 길이에 비해 컨텍스트가 작습니다.`);
     const remember = Math.max(1, Math.floor(room / turn));
     const charLogs = clamp(R.charTokens / turn, 2, 6), setLogs = clamp(R.setTokens / turn, 2, 6);
-    const posTurns = clamp(R.posTokens / turn, 3, 8), batch = clamp(R.batchTokens / turn, 1, 6);
+    const posTurns = clamp(R.posTokens / turn, 3, 8), batch = clamp(R.batchTokens / turn, 1, 3);
     return {
         remember, room: Math.round(room), promptGiven: prompt > 0,
         values: {
@@ -9111,15 +9111,15 @@ async function scoutLedgerPanel(){
     const status=document.createElement('p');status.textContent=scoutLedgerStatus.get(scope)||'저장된 변경 기록';box.appendChild(status);
     const all=document.createElement('button');all.textContent='기존 대화 전체 읽기 / 이어서 읽기';all.onclick=async()=>{if(all.disabled)return;all.disabled=true;try{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다. 창을 다시 열어 주세요.');await scoutLedgerSync(fresh,Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{all.disabled=false;}};box.appendChild(all);
     const rescan=document.createElement('button');rescan.textContent='인지 기록 포함 과거 재검사';rescan.onclick=async()=>{rescan.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);scoutLedgerReconcile(l,scoutCompleted(fresh));if(!l.rescanPrev||l.hashes.length>l.rescanPrev.length)l.rescanPrev=l.hashes;l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{rescan.disabled=false;}};box.appendChild(rescan);
-    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='직접 고치거나 쓰거나 보호한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('직접 수정한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>e.edited||scoutLocked(e));l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
-    const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 직접 수정한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
+    const redo=document.createElement('button');redo.textContent='자동 기록 비우고 새 기준으로 다시 읽기';redo.title='🔒 보호한 기록만 남기고 나머지를 지운 뒤 처음부터 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';redo.onclick=async()=>{if(!confirm('🔒 보호한 기록만 남기고 나머지 기록을 모두 지운 뒤 처음부터 다시 읽습니다. 고친 기록도 보호하지 않았으면 지워집니다. 메시지 수만큼 API 요청이 다시 발생합니다. 계속할까요?'))return;redo.disabled=true;try{await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const l=await scoutLedgerLoad(scope);l.events=l.events.filter(e=>scoutLocked(e));l.excluded=l.excluded.filter(id=>l.events.some(e=>e.id===id));l.hashes=[];await scoutLedgerSave(l);});await scoutLedgerPanel();await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{redo.disabled=false;}};box.appendChild(redo);
+    const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 🔒 보호한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
     scoutLedgerLogButton(box,scope);
     // 버튼을 읽기 / 정리 / 기타 세 줄로 묶는다
     {
         status.style.cssText='margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#181825;border:1px solid #313244;color:#cdd6f4;font-size:12px;line-height:1.5';
         all.textContent='이어서 읽기';all.title='아직 안 읽은 대화부터 끝까지 읽습니다. 자동 읽기 간격과 상관없이 바로 시작합니다.';
-        redo.textContent='처음부터 다시 읽기';redo.title='직접 고치거나 쓰거나 보호한 기록만 남기고 자동 기록을 모두 지운 뒤 처음부터 새 기준으로 다시 판정합니다. 메시지 수만큼 API 요청이 다시 발생합니다.';
+        redo.textContent='처음부터 다시 읽기';redo.title='🔒 보호한 기록만 남기고 나머지 기록을 모두 지운 뒤 처음부터 새 기준으로 다시 판정합니다. 고친 기록도 보호하지 않았으면 지워집니다. 메시지 수만큼 API 요청이 다시 발생합니다.';
         rescan.textContent='기록 두고 다시 훑기';rescan.title='지금 기록은 그대로 둔 채 처음부터 다시 읽어 빠진 것만 보탭니다.';
         tidy.title=tidy.title||'';undo.title=undo.title||'';
         const logBtn=[...box.querySelectorAll(':scope > button')].find(b=>b.textContent==='중대 분기 진단 로그'),logPane=logBtn?.nextElementSibling;if(logBtn)logBtn.textContent='진단 로그';

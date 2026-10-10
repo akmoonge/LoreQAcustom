@@ -55,7 +55,7 @@ comments are Korean.
   `LOREQA_ENV_RULE`, user overrides in `envRule` via the "계산 기준 (고급)" fold; no prompt size =
   40% of context assumed; 계산 shows
   current → computed, 적용 writes them). Separate token budgets per use (인물 4k / 세계관 6k /
-  위치 10k / 분기 묶음 12k); ledger read interval = min(batch, remembered turns / 3, helper window
+  위치 10k / 분기 묶음 6k, max 3 turns: bigger batches missed and blurred records); ledger read interval = min(batch, remembered turns / 3, helper window
   + maxGap 2), chosen from a 10-environment simulation. All ratios and tiers are guesses until
   usage data.
 - 진행 상황 창: `loreqa_callLLM` is now a thin wrapper that records each helper call (step name
@@ -121,8 +121,8 @@ comments are Korean.
 - Tidy: `scoutLedgerTidyWork` merges/drops/re-flags core every `ledgerTidyEvery` new
   records or via "지금 정리"; unmentioned and protected records are kept; undo backup. Protection is
   its own flag (`scoutLocked`: `locked`, or a manual record unless `locked:false`), toggled per record
-  ("정리에서 보호"); editing a record no longer protects it. "처음부터 다시 읽기" keeps edited, manual
-  and protected records.
+  ("정리에서 보호"); editing a record no longer protects it. "처음부터 다시 읽기" keeps only protected records
+  (manual ones are protected by default).
 - Batching: `ledgerBatchTurns` (turns), `ledgerBatchChars` (0 = no cap), `ledgerEvery`
   (auto-read interval). Panel: "이어서 읽기", "처음부터 다시 읽기", "기록 두고 다시 훑기"
   (resets read position; `rescanPrev` lets "읽기 중지" roll it back), "시작 위치" input.
