@@ -136,6 +136,8 @@ comments are Korean.
   scene), `[HIDDEN]` = one-line secrets, `[BEATS]` = next original events as
   "event / needs: condition" (+ "(broken: …)"). Stored as `byPos[key].world` {raw,pub,hidden,beats,v,n,nb,
   divN}; regenerated on position / ledger-count / `worldCount` / `beatCount` change.
+  The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
+  prompt: an old saved prompt produced tables without [BEATS]); the parser accepts [TAG], 【TAG】, TAG:.
 - 장면 판단 (`loreqa_judgeScene`, prompt `sceneJudge`, 전개모드 API with its profile reasoning, no search,
   last `sceneTurns` turns) runs when `st.sceneGen` bumps (time-jump detector answers time + SAME/NEW),
   the table changes, or every `sceneTurns` replies if jump detection is off. One call returns PLACE,

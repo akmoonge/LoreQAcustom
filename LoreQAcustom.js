@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.19
+//@version 3.2.20
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -952,6 +952,8 @@ function loreqa_injectStyles() {
         .loreqa-sublabel {
             font-size: 11px; color: #6c7086; margin-top: 2px;
         }
+        .loreqa-rowsub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+        .loreqa-rowsub.open { display: block; -webkit-line-clamp: unset; }
         .loreqa-select {
             background: #313244; color: #cdd6f4; border: 1px solid #45475a;
             border-radius: 6px; padding: 4px 8px; font-size: 12px;
@@ -1278,8 +1280,11 @@ function loreqa_createRow(labelText, control, sublabel) {
     left.appendChild(lbl);
     if (sublabel) {
         const sub = document.createElement('div');
-        sub.className = 'loreqa-sublabel';
+        // 설명은 두 줄까지만 보이고, 누르면 펼침 (마우스를 올리면 전체 문장)
+        sub.className = 'loreqa-sublabel loreqa-rowsub';
         sub.textContent = sublabel;
+        sub.title = sublabel;
+        sub.addEventListener('click', () => sub.classList.toggle('open'));
         left.appendChild(sub);
     }
     row.appendChild(left);
@@ -3518,7 +3523,7 @@ async function loreqa_renderStatus() {
     if (st.cur && (loreqa_flowOn('compGuard') || loreqa_flowOn('compGuide'))) {
         const b = st.byPos[st.cur.key], W = b?.world, sc = b?.scene, played = Array.isArray(b?.played) ? b.played : [];
         const d = loreqa_el('details'); d.open = !W;
-        d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length} · 숨은 ${W.hidden.length} · 원작 비트 ${(W.beats || []).length} (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
+        d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length} · 숨은 ${W.hidden.length} · 원작 비트 ${(W.beats || []).length}${(W.beats || []).length ? '' : ' ⚠'} (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
         d.appendChild(loreqa_el('div', 'loreqa-muted', '[PUBLIC] 은 화면 밖 원작 세계의 상태, [HIDDEN] 은 시점 가드 후보, [BEATS] 는 "사건 / needs: 조건" 형식의 다음 원작 사건입니다. 장면이 바뀔 때마다 장면 판단이 지금 장면에 닿는 비밀과 조건이 맞는 비트만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
         const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '180px'; area.value = W?.raw || '';
         const info = loreqa_el('div', 'loreqa-muted'); info.style.marginTop = '6px'; info.style.whiteSpace = 'pre-wrap';
@@ -3554,7 +3559,7 @@ async function loreqa_renderStatus() {
                 if (!fresh) { say('✗ 세계 상태표 생성 실패: ' + (loreqa_worldErr || '빈 응답') + ' — 기존 표는 그대로 둡니다.'); return; }
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
                 bk.world = { ...fresh, divN: div.length }; delete bk.scene; await loreqa_posSave(snap.scope, s2);
-                say('✓ 세계 상태표를 다시 만들었습니다.');
+                say('✓ 세계 상태표를 다시 만들었습니다.' + (loreqa_worldNote ? ' ⚠ ' + loreqa_worldNote : ''));
             }),
             // 누르면 바로 판단한다 (다음 요청까지 기다리지 않음). 숨은 상태가 적어도 묻는다
             loreqa_btn('장면 다시 판단', async e => {
@@ -7265,27 +7270,13 @@ Evidence, in order of trust:
 1. In-story dates and times (if given). Use them when the original's chronology for that period is documented. Many originals have vague, inconsistent or no dates: in that case do not force a match by date, and rely on 2 and 3.
 2. Story-progress markers in the chat: which original events are referred to as already past or still ahead, characters' ages or school years, terms, seasons, holidays, story arcs or locations that only exist in a certain period.
 3. Never match by topical similarity. A roleplay scene that resembles, or talks about, a later original scene does NOT move the timeline forward, and a divergent roleplay event does not map to the original event it resembles.` } },
-    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'count', 'beats', 'mediumRule', 'language'],
-        locked: '출력의 [PUBLIC] / [HIDDEN] / [BEATS] 표식, "- " 로 시작하는 줄, 비트의 " / needs:" 와 "(broken: …)" 형식은 지켜야 함 (그대로 읽어서 나눔). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
+    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'mediumRule'],
+        locked: '뒤에 출력 형식([PUBLIC] / [HIDDEN] / [BEATS] 세 칸, 줄 형식, 이야기 인물 위치 금지, 언어)이 자동으로 붙음 (그대로 읽어서 나누므로 잠김). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
         def: { en: `You describe the CURRENT STATE OF THE WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
 This is NOT the script of this story. It is where the original world stands right now, so that a writer can keep it moving in the background while the story's own characters (including the player's original character) may be somewhere else doing other things.
 Use web search to check the original at this point instead of relying on memory.
 The story's confirmed changes (confirmed_changes) override the original: if a story character has joined, left, replaced, saved or killed someone, show the result.
-
-Output exactly three sections with these tags:
-[PUBLIC]
-- One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now. Present tense. No backstory, no explanation of motives or mechanics, nothing that happens later.
-  Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Mention them only where confirmed_changes give an original character or faction a lasting new state (for example a death, a defection, a new ruler).
-[HIDDEN]
-- Facts already true now that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 10.
-  Only real secrets: skip mere unknown information (such as not knowing where something is). No motives, mechanics, weaknesses or future plans.
-  Secrets created by the story count only if confirmed_changes state them; never invent new ones.
-[BEATS]
-- The next major events of the ORIGINAL after this point, in order, at most {{beats}}. Format: "<what happens, who is involved> / needs: <who must be where, or what must be true, for it to happen>".
-  Skip events listed in events_already_played (they already happened in this story).
-  If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
-Rules: only what is true at this point; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out.
-Write the lines in {{language}}; keep the three tags and the markers "/ needs:" and "(broken:" as they are. No preamble, no closing remarks.` } },
+Rules for the current state and the secrets: only what is true at this point; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out. Upcoming events of the original are not current state: they go only in the separate list of next events.` } },
     sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
         locked: '입력: 세계 상태, 번호 붙은 숨은 상태와 원작 비트, 최근 이야기, 이번 유저 입력. 답은 PLACE / PRESENT / SECRETS / READY / NEAR / DONE 여섯 줄 (그대로 읽어서 나눔)',
         def: { en: `You read where a story stands right now and match it against the original work's state.
@@ -7573,7 +7564,7 @@ function loreqa_trueDivergences(projection) {
 //   [HIDDEN]  그중 일부 인물만 아는 것 → 장면마다 관련 있는 것만 골라 시점 가드로
 //   [BEATS]   다음 원작 사건 + 조건(needs) → 장면 판단이 조건이 맞는 것만 골라 원작 흐름 블록으로 (끌어오기 방지)
 //   원작의 '다음 사건'을 넘기면 메인 모델이 그 사건을 이야기 인물 앞으로 끌어온다. 상태로 넘기면 어디서 벌어지는지가 함께 간다.
-const LOREQA_WORLD_V = 2; // 2 = [BEATS] (조건 붙은 원작 사건) 추가
+const LOREQA_WORLD_V = 3; // 2 = [BEATS] 추가, 3 = 출력 형식을 잠긴 부분으로 (고친 프롬프트로 만든 비트 없는 표를 한 번 다시 만듦)
 // 원작 흐름 성향 (서사 가이드). '끔'은 compGuide=0 으로 따로 둔다
 const LOREQA_STANCES = [
     ['follow', '원작 따라가기', 'stanceFollow'], ['canon', '원작 우선', 'stanceCanon'], ['balance', '균형', 'stanceBalance'],
@@ -7584,12 +7575,13 @@ function loreqa_parseWorld(raw) {
     const text = String(raw || '').replace(/\r/g, '');
     const head = /^(?:[-•*・·▪◦]|\d{1,2}[.)、．])\s*/;
     const lines = part => part.split('\n').map(l => l.trim()).filter(l => head.test(l)).map(l => l.replace(head, '').trim()).filter(Boolean);
-    const tags = [['pub', /\[PUBLIC\]/i], ['hidden', /\[HIDDEN\]/i], ['beats', /\[BEATS\]/i]].map(([k, re]) => [k, text.search(re)]).filter(([, i]) => i >= 0).sort((a, b) => a[1] - b[1]);
+    const tagRe = w => new RegExp('(?:[\\[【]\\s*' + w + '\\s*[\\]】]|^\\s*#*\\s*' + w + '\\s*[:：]?\\s*$)', 'im');
+    const tags = [['pub', tagRe('PUBLIC')], ['hidden', tagRe('HIDDEN')], ['beats', tagRe('BEATS')]].map(([k, re]) => { const m = re.exec(text); return [k, m ? m.index : -1, m ? m[0].length : 0]; }).filter(([, i]) => i >= 0).sort((a, b) => a[1] - b[1]);
     const out = { pub: [], hidden: [], beats: [] };
     if (!tags.length) { out.pub = lines(text); return out; }
-    tags.forEach(([k, i], n) => { const start = text.indexOf(']', i) + 1, end = n + 1 < tags.length ? tags[n + 1][1] : text.length; out[k] = lines(text.slice(start, end)); });
+    tags.forEach(([k, i, len], n) => { const start = i + len, end = n + 1 < tags.length ? tags[n + 1][1] : text.length; out[k] = lines(text.slice(start, end)); });
     // 비트: "<사건> / needs: <조건>" + 끝의 "(broken: <이유>)"
-    out.beats = out.beats.map(l => {
+    out.beats = out.beats.filter(l => !/^(none|なし|없음|无|無)\.?$/i.test(l.trim())).map(l => {
         const broken = /\(broken\b[^)]*\)\s*$/i.test(l);
         const m = l.split(/\s*\/\s*needs\s*[:：]\s*/i);
         return { text: l, event: (m[0] || l).trim(), needs: (m[1] || '').replace(/\(broken\b[^)]*\)\s*$/i, '').trim(), broken };
@@ -7602,12 +7594,29 @@ async function loreqa_helperDivergences(snap) {
     try { return loreqa_capTail(loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))), 'helperDivMax'); }
     catch (e) { return []; }
 }
+// 세계 상태표 출력 형식: 프롬프트를 직접 고친 사용자에게도 항상 붙는다 (예전 형식으로 고쳐 둔 프롬프트 때문에 [BEATS] 가 안 나오던 문제)
+const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given above). Output exactly three sections with these tags:
+[PUBLIC]
+- One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now. Present tense. No backstory, no explanation of motives or mechanics, nothing that happens later.
+  Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Do not list them as members of a group even if confirmed_changes say they joined it. Mention them only where confirmed_changes give an original character or faction a lasting new state such as a death, a defection or a new ruler; joining, leaving or travelling with a group never counts.
+[HIDDEN]
+- Facts already true now that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 10.
+  Only real secrets: skip mere unknown information (such as not knowing where something is). No motives, mechanics, weaknesses or future plans.
+  Secrets created by the story count only if confirmed_changes state them; never invent new ones.
+[BEATS] (REQUIRED: always write this section; it is the ONLY place for events that have not happened yet, so the "only what is true now" rules above do not apply to it)
+- The next major events of the ORIGINAL after this point, in order, at most {{beats}}. Format: "<what happens, who is involved> / needs: <who must be where, or what must be true, for it to happen>".
+  Skip events listed in events_already_played (they already happened in this story).
+  If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
+  If the original has no further events after this point, write the single line "- none".
+Every line starts with "- ". Write the lines in {{language}}; keep the three tags and the markers "/ needs:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
 // 마지막 세계 상태표 생성 실패 이유 (위치 카드에 보여 줌): HTTP 오류 코드, 출력 한도, 또는 형식을 못 읽은 답의 앞부분
 let loreqa_worldErr = '';
+let loreqa_worldNote = ''; // 생성은 됐지만 원작 비트가 빈 경우의 안내
 // played: 이 위치에서 이미 이야기에서 일어난 원작 비트 (다시 만들 때 빼라고 알려 줌)
 async function loreqa_generateWorld(label, divergences, played = []) {
     const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
-    const system = loreqa_prompt('world', { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
+    const vars = { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, language: lang };
+    const system = loreqa_prompt('world', vars, false) + '\n\n' + LOREQA_WORLD_FORMAT.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vars ? String(vars[k]) : m) + await loreqa_flowOcRule();
     const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), events_already_played: played.slice(-20), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
@@ -7622,6 +7631,8 @@ async function loreqa_generateWorld(label, divergences, played = []) {
             loreqa_stat('world.fail'); return null;
         }
         loreqa_worldErr = '';
+        // 비트가 비면 이유를 남긴다 (원작 흐름은 조건 맞는 비트가 없어 세계 상태만 넣게 됨)
+        loreqa_worldNote = p.beats.length ? '' : `원작 비트 없음${out?.diagnostic?.finish ? ` (종료 사유: ${out.diagnostic.finish})` : ''} — 모델이 [BEATS] 칸을 쓰지 않았거나 원작에 다음 사건이 없다고 답함. 다시 생성해 보거나 전개모드 모델을 바꿔 보세요.`;
         loreqa_stat('world.gen'); loreqa_stat('world.public', p.pub.length); loreqa_stat('world.hidden', p.hidden.length); loreqa_stat('world.beats', p.beats.length); loreqa_stat('world.broken', p.beats.filter(b => b.broken).length);
         return { raw, pub: p.pub, hidden: p.hidden, beats: p.beats, v: LOREQA_WORLD_V, n, nb };
     } catch (e) { loreqa_worldErr = String(e?.message || e || loreqa_state?.lastError || '예외').split('\n')[0]; loreqa_stat('world.fail'); console.warn('[LoreQA] 세계 상태표 생성 실패:', e?.message || e); return null; }
@@ -9781,9 +9792,12 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀 중 지금 장면에 닿는 것만 골라 "모르는 인물은 알거나 암시하면 안 됨"으로 주입. 비밀은 세계 상태표에서 고르고, 장면이 바뀌면 다시 고름');
     // 원작 흐름 (서사 가이드): 끔 / 원작 따라가기 / 원작 우선 / 균형 / 개변 우선 / 개변 즐기기. 끔은 compGuide=0, 나머지는 canonStance
     const stanceNow=Number(loreqa_cfg.compGuide)===1?loreqa_stance():'off';
+    const STANCE_DESC={off:'세계 상태와 원작 사건을 넣지 않음',follow:'조건이 맞는 원작 사건으로 이끌고, 조건이 거의 맞는 사건 쪽으로도 기울임. 분기로 깨진 사건은 바뀐 상황에 맞는 비슷한 사건으로 대신할 수 있음',canon:'조건이 맞는 원작 사건으로 이끎. 조건을 억지로 만들지는 않음',balance:'조건이 맞는 원작 사건은 자연스러울 때만 일어남',change:'원작 사건이 바뀐 결과와 부딪히면 바뀐 쪽을 따름. 분기에 얽힌 인물은 바뀐 상황에 맞춰 움직임',free:'원작은 "원래라면 이랬다"는 참고만. 세계 전체가 바뀐 것에 반응'};
+    const stanceDesc=loreqa_el('div','loreqa-muted');stanceDesc.style.cssText='margin:2px 0 6px;font-size:12px';stanceDesc.textContent='→ '+STANCE_DESC[stanceNow];
     secSet.appendChild(loreqa_createRow('원작 흐름 (서사 가이드)',loreqa_createSelect('canon-trk-stance',[{value:'off',label:'끔'},...LOREQA_STANCES.map(([value,label])=>({value,label}))],stanceNow,async v=>{
-        if(v==='off')loreqa_cfg.compGuide=0;else{loreqa_cfg.compGuide=1;loreqa_cfg.canonStance=v;}await loreqa_saveConfig();
-    }),'화면 밖 원작 세계의 상태와, 지금 장면에서 조건이 맞는 원작 사건만 넣음 (조건이 안 맞는 사건은 넣지 않아 이야기 인물 앞으로 끌려오지 않음). 원작 따라가기: 조건이 맞는 사건으로 이끌고 조건이 거의 맞는 사건 쪽으로도 기울임 / 원작 우선: 조건이 맞는 사건으로 이끔 / 균형: 자연스러울 때만 / 개변 우선: 바뀐 결과와 부딪히면 바뀐 쪽 / 개변 즐기기: 원작은 참고만, 세계가 바뀐 것에 반응'));
+        if(v==='off')loreqa_cfg.compGuide=0;else{loreqa_cfg.compGuide=1;loreqa_cfg.canonStance=v;}stanceDesc.textContent='→ '+(STANCE_DESC[v]||'');await loreqa_saveConfig();
+    }),'화면 밖 원작 세계의 상태와, 지금 장면에서 조건이 맞는 원작 사건만 넣음. 원작 사건을 얼마나 따를지 고름'));
+    secSet.appendChild(stanceDesc);
     secSet.appendChild(loreqa_createRow('원작 매체',loreqa_createSelect('canon-trk-medium',Object.entries(LOREQA_MEDIA).map(([value,m])=>({value,label:m.label})),loreqa_cfg.canonMedium||'auto',async v=>{loreqa_cfg.canonMedium=v;await loreqa_saveConfig();}),'위치를 어느 매체의 번호로 셀지. 원작 만화와 애니처럼 번호가 다를 때 중요'));
     const secJump=scoutSection('시간 점프');
     loreqa_trkToggle(secJump,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
@@ -9815,7 +9829,7 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
     right.append(secSet,secJump,secModel,charSec,secMore);
     // 세계 상태표 개편(3.2.17) 전에 직접 고친 프롬프트는 새 방식과 안 맞을 수 있다. 고친 것은 그대로 두고 알리기만 한다
-    {const old={jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면을 다시 판단하지 않음)',injJump:'위치 블록 안내 (시간 점프)'};
+    {const old={world:'세계 상태표 생성 (출력 형식은 이제 자동으로 붙지만, 예전 내용 지시가 새 규칙과 부딪힐 수 있음)',sceneJudge:'장면 판단',jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면을 다시 판단하지 않음)',injJump:'위치 블록 안내 (시간 점프)'};
      const mine=Object.keys(old).filter(k=>loreqa_promptCustom(k));
      if(mine.length){const w=scoutSection('직접 고친 프롬프트 확인');w.appendChild(loreqa_el('div','loreqa-muted','서사 가이드가 "다음 원작 사건"에서 "세계 상태 + 조건이 맞는 원작 사건"으로 바뀌었습니다. 아래 프롬프트는 직접 고친 것을 계속 쓰고 있어 새 방식과 안 맞을 수 있습니다. 아래 프롬프트 편집에서 "기본값으로"를 누르면 새 기본값을 씁니다.\n'+mine.map(k=>'· '+old[k]).join('\n')));w.lastChild.style.whiteSpace='pre-wrap';right.insertBefore(w,secSet);}}
 
