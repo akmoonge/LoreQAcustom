@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.11
+//@version 3.3.12
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.11';
+const LOREQA_VER = '3.3.12';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -9031,6 +9031,8 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
         const from=(Array.isArray(m?.from)?m.from:[]).filter(r=>evOf.has(r)&&!used.has(r)&&!scoutLocked(evOf.get(r)));
         const entity=str(m?.entity,120),dimension=str(m?.dimension,120),after=str(m?.after,500);
         if(!from.length||!entity||!dimension||!after){notes.push('합치기 1건 무시(형식)');continue;}
+        // 종류가 다른 기록(아는 것 + 관계, 서로 다른 플레이어 칸)은 합치지 않는다: 정리가 '정체를 안다' 기록을 관계 기록에 녹여 없앤 적이 있다
+        { const ks=new Set(from.map(r=>{const e=evOf.get(r);return (loreqa_slotOf(e)||'')+'|'+(loreqa_slotOf(e)?'':e.category);}));if(ks.size>1){notes.push('합치기 1건 무시(종류가 다른 기록)');continue;} }
         from.forEach(r=>used.add(r));
         const src=from.map(r=>evOf.get(r));
         const evidence=[];for(const e of src)for(const q of e.evidence||[])if(!evidence.some(x=>x.index===q.index&&x.quote===q.quote))evidence.push(q);
