@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.43
+//@version 3.2.44
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8940,7 +8940,11 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     // 모델이 합치지 않고 남긴 같은 인물·항목 기록은 가장 최근 것만 남긴다 (보조·메인 모델도 원래 최신 것만 받는다)
     { const keyOf=e=>String(e.entity).trim().toLowerCase()+'\u0000'+String(e.dimension).trim().toLowerCase(), last=new Map();
       for(const [r,e] of evOf)if(!used.has(r))last.set(keyOf(e),r);
-      for(const [r,e] of evOf){if(used.has(r)||scoutLocked(e))continue;const nr=last.get(keyOf(e));if(nr&&nr!==r){used.add(r);drops.push({id:e.id,by:evOf.get(nr).entity+' · '+evOf.get(nr).dimension,reason:'같은 항목의 더 최근 기록이 대신함'});}} }
+      // 합친 결과가 같은 항목이면 남은 옛 기록도 그 결과가 대신한다
+      const mergedKeys=new Set(merges.map(m=>keyOf(m.event)));
+      for(const [r,e] of evOf){if(used.has(r)||scoutLocked(e))continue;const k=keyOf(e),nr=last.get(k);
+          if(mergedKeys.has(k)){used.add(r);drops.push({id:e.id,by:e.entity+' · '+e.dimension+' (정리로 합친 기록)',reason:'같은 항목을 합친 기록이 대신함'});}
+          else if(nr&&nr!==r){used.add(r);drops.push({id:e.id,by:evOf.get(nr).entity+' · '+evOf.get(nr).dimension,reason:'같은 항목의 더 최근 기록이 대신함'});}} }
     let cored=0;
     const coreSet=new Map();
     for(const c of Array.isArray(v?.core)?v.core:[]){const r=c?.id;if(!evOf.has(r)||used.has(r)||scoutLocked(evOf.get(r)))continue;coreSet.set(evOf.get(r).id,c.core===true||c.core==='true');}
