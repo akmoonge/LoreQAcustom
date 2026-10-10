@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.48
+//@version 3.2.49
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -6684,7 +6684,8 @@ async function loreqa_getPersonaDescription() {
         const db = await risuai.getDatabase(['personas', 'selectedPersona']);
         if (!db) { loreqa_personaLast = { ok: false, reason: 'Risu DB 접근 권한이 없음 (플러그인 권한 허락 필요)' }; return ''; }
         const idx = Number(db.selectedPersona) || 0, persona = db.personas?.[idx];
-        const text = persona?.personaPrompt || db.personaPrompt || '';
+        // Risu 본체는 페르소나 안의 {{user}} 를 CBS 로 바꾸지만 플러그인은 원문을 받는다: 이름이 있으면 그 자리에 넣는다
+        const text = String(persona?.personaPrompt || db.personaPrompt || '').replace(/\{\{\s*user\s*\}\}/gi, m => persona?.name || m);
         loreqa_personaLast = text ? { ok: true, name: persona?.name || '', index: idx, len: text.length, head: text.slice(0, 160) }
             : { ok: false, reason: persona ? `선택된 페르소나(${persona.name || (idx + 1) + '번'})의 설명이 비어 있음` : '선택된 페르소나를 찾지 못함' };
         return text;
