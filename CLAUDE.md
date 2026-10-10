@@ -126,6 +126,8 @@ comments are Korean.
 - Batching: `ledgerBatchTurns` (turns), `ledgerBatchChars` (0 = no cap), `ledgerEvery`
   (auto-read interval). Panel: "이어서 읽기", "처음부터 다시 읽기", "기록 두고 다시 훑기"
   (resets read position; `rescanPrev` lets "읽기 중지" roll it back), "시작 위치" input.
+  "시작 위치로 저장" sets `ledger.startAt`: `scoutLedgerSyncWork` never reads before it (redo, rescan
+  and rewinds included); "시작 위치 해제" removes it.
 - `scoutLedgerReconcile` rewinds when an earlier message changed; it logs the index.
   `scoutMessageHash` hashes `scoutHashNorm(text)` (no whitespace / tags / markdown / width
   differences): GigaTrans rewrites the last reply after we read it (original moves into

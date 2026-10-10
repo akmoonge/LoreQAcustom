@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.27
+//@version 3.2.28
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8969,7 +8969,9 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
     const scope=scoutLedgerScope(snap),ledger=await scoutLedgerLoad(scope);let messages=scoutCompleted(snap);
     // 설정값이 아니라 대화 자체만 본다: 다른 모드가 실행 중 설정을 잠깐 바꿔 끼워도 중단되지 않게
     if((await scoutSnapshot()).scope!==snap.scope)throw Error('대화가 바뀌어 중대 분기 처리를 취소했습니다.');
-    if(scoutLedgerReconcile(ledger,messages))await scoutLedgerSave(ledger);
+    // 저장된 시작 위치(ledger.startAt): 그 앞 메시지는 읽지 않는다. 처음부터 다시 읽기 · 다시 훑기 · 앞쪽 메시지가 바뀐 되감기도 여기서 멈춘다
+    const enforceStart=()=>{const st=Math.min(Number(ledger.startAt)||0,messages.length);if(st>ledger.hashes.length){ledger.hashes=messages.slice(0,st).map(scoutMessageHash);return true;}return false;};
+    if(scoutLedgerReconcile(ledger,messages)|enforceStart())await scoutLedgerSave(ledger);
     let batches=0,restarts=0;
     const branchExtras=await loreqa_ctxExtras('branch');
     // 읽은 구간(0..end)의 메시지가 바뀌었으면: 그만두지 않고 최신 대화로 다시 맞춘 뒤 바뀐 곳부터 이어 읽는다.
@@ -8983,7 +8985,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         scoutLedgerLogAdd(scope,{time:new Date().toISOString(),status:'대화 변경 감지 → 최신 대화로 다시 맞춤',where,changedIndex:i,restarts});
         if(restarts>4)throw Error(`메시지 ${i}번이 읽는 동안 계속 바뀌어 중단했습니다. 그 메시지를 고치는 다른 플러그인(번역 등)이 끝난 뒤 이어서 읽기를 눌러 주세요.`);
         messages=fm;
-        if(scoutLedgerReconcile(ledger,messages))await scoutLedgerSave(ledger);
+        if(scoutLedgerReconcile(ledger,messages)|enforceStart())await scoutLedgerSave(ledger);
         return true;
     };
     try{
@@ -9132,7 +9134,7 @@ async function scoutLedgerPanel(){
         // 수동 시작 위치: 이 번호 앞까지는 읽은 것으로 치고 이 번호부터 읽는다
         const from=document.createElement('input');from.type='number';from.min='0';from.className='loreqa-input';from.style.cssText='width:90px';
         const fromInfo=document.createElement('span');fromInfo.style.cssText='font-size:11px;color:#a6adc8';
-        (async()=>{try{const l=await scoutLedgerLoad(scope),n=scoutCompleted(snap).length;from.max=String(n);from.value=String(Math.min(l.hashes.length,n));fromInfo.textContent=`읽음 ${l.hashes.length} / 전체 ${n}개 메시지`;}catch(e){}})();
+        (async()=>{try{const l=await scoutLedgerLoad(scope),n=scoutCompleted(snap).length;from.max=String(n);from.value=String(Math.min(l.startAt||l.hashes.length,n));fromInfo.textContent=`읽음 ${l.hashes.length} / 전체 ${n}개 메시지`+(l.startAt?` · 저장된 시작 위치 ${l.startAt}번 (그 앞은 읽지 않음)`:'');}catch(e){}})();
         const go=document.createElement('button');go.textContent='이 번호부터 읽기';go.title='입력한 메시지 번호 앞까지는 읽은 것으로 치고, 그 번호부터 끝까지 읽습니다. 기록은 지우지 않습니다. 상태줄의 "인덱스" 숫자와 같은 번호입니다.';
         go.onclick=async()=>{go.disabled=true;try{
             const n=Math.max(0,parseInt(from.value)||0);
@@ -9140,7 +9142,15 @@ async function scoutLedgerPanel(){
             scoutLedgerStatus.set(scope,`메시지 ${n}번부터 읽기 시작`);await scoutLedgerPanel();
             await scoutLedgerSync(await scoutSnapshot(),Infinity);await scoutLedgerPanel();
         }catch(e){status.textContent=String(e.message||e);}finally{go.disabled=false;}};
-        const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,fromInfo);
+        // 시작 위치 저장: 이 채팅은 이 번호 앞을 읽지 않는다 (처음부터 다시 읽기도 여기서 시작). 해제하면 다시 0번부터
+        const keep=document.createElement('button');keep.textContent='시작 위치로 저장';keep.title='이 채팅은 입력한 번호 앞의 메시지를 읽지 않습니다. 처음부터 다시 읽기 · 기록 두고 다시 훑기 · 앞쪽 메시지가 바뀌어 되감길 때도 이 번호에서 시작합니다. 기록은 지우지 않습니다.';
+        keep.onclick=async()=>{keep.disabled=true;try{const n=Math.max(0,parseInt(from.value)||0);
+            await scoutLedgerSerial(async()=>{const fresh=await scoutSnapshot();if(fresh.scope!==scope)throw Error('채팅이 바뀌었습니다.');const msgs=scoutCompleted(fresh);const l=await scoutLedgerLoad(scope);l.startAt=n||undefined;if(n>l.hashes.length){l.hashes=msgs.slice(0,Math.min(n,msgs.length)).map(scoutMessageHash);delete l.rescanPrev;}await scoutLedgerSave(l);});
+            scoutLedgerStatus.set(scope,n?`시작 위치를 ${n}번으로 저장했습니다. 이 채팅은 그 앞을 읽지 않습니다.`:'시작 위치를 해제했습니다.');await scoutLedgerPanel();
+        }catch(e){status.textContent=String(e.message||e);}finally{keep.disabled=false;}};
+        const unkeep=document.createElement('button');unkeep.textContent='시작 위치 해제';unkeep.title='저장한 시작 위치를 지웁니다. 다음 처음부터 다시 읽기는 0번부터 읽습니다. 지금 읽은 위치와 기록은 그대로입니다.';
+        unkeep.onclick=async()=>{unkeep.disabled=true;try{await scoutLedgerSerial(async()=>{const l=await scoutLedgerLoad(scope);delete l.startAt;await scoutLedgerSave(l);});scoutLedgerStatus.set(scope,'시작 위치를 해제했습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{unkeep.disabled=false;}};
+        const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,keep,unkeep,fromInfo);
         const fl=document.createElement('span');fl.textContent='시작 위치';fl.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';bar.append(fl,fromRow);
         group('정리',[tidy,undo]);
         const expBtn=document.createElement('button');expBtn.textContent='JSON 내보내기';expBtn.title='이 채팅의 분기 기록 전체(근거·제외 표시 포함)를 JSON 파일로 저장합니다.';
