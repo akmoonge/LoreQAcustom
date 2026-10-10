@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.18
+//@version 3.2.19
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -16,6 +16,8 @@ const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
     active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
     floatOn: 1,        // 진행 상황 창 (보조 호출마다 단계 · 시간 · 토큰)
+    uiScale: 115,      // 설정창 글자 크기 (%)
+    windowSize: null,  // 설정창 크기 { w, h } (오른쪽 아래 손잡이로 조절)
     floatPos: 'br',    // 진행 상황 창 위치: tr | br | tl | bl (오른쪽 위는 Yumi Provider Manager 창 자리)
     floatPosV: 1,      // 1 = 위치 기본값을 오른쪽 아래로 옮긴 뒤
     activePrev: 1,     // 머리의 '전체 ON/OFF'로 끄기 전 active 값 (다시 켤 때 복원)
@@ -116,6 +118,7 @@ const LOREQA_DEFAULTS = {
     briefLoreChars: 1800, // 원작 브리핑 로어 항목당 글자 수
     inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
     ledgerEvery: 1,      // 분기 자동 읽기: 안 읽은 대화가 N턴 쌓이면 읽음 (1 = 매 턴)
+    ledgerDeferLatest: 1, // 가장 최근 응답은 다음 턴에 읽음 (번역·상태창 등 후처리가 끝난 뒤)
     ledgerBatchTurns: 2, // 분기 읽기 한 묶음의 턴 수 (사용자+응답 = 1턴)
     ledgerBatchChars: 0, // 분기 읽기 한 묶음의 글자 수 상한 (0 = 없음, 턴 수로만)
     flowOriginal: 0,     // 전개모드: 플레이어 OC 규칙
@@ -257,7 +260,7 @@ function loreqa_statsSettings() {
         fameTier: c.fameTier || '', env: { ctx: c.envCtx, prompt: c.envPrompt, out: c.envOut, in: c.envIn, lang: c.envLang, rule: c.envRule || {} },
         modes: pick(['modeChar', 'modeSet', 'modeBranch', 'modeFlow', 'instrOnly']),
         sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'canonStance', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
-        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'beatCount', 'sceneTurns', 'sceneSecretMax']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
+        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'beatCount', 'sceneTurns', 'sceneSecretMax', 'ledgerDeferLatest']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
         qa: { char: { lore: mc.char.lore, search: mc.char.search, verifySearch: mc.char.verifySearch }, set: { lore: mc.set.lore, search: mc.set.search, verifySearch: mc.set.verifySearch } },
         apiTypes: { main: c.apiType, branch: c.branchApi || '', flow: c.flowApi || '', jump: c.jumpApi || '', char: mc.char.modeApi || '', set: mc.set.modeApi || '' },
     };
@@ -443,7 +446,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'floatPosV', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'floatPosV', 'uiScale', 'windowSize', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -864,10 +867,11 @@ function loreqa_injectStyles() {
     style.textContent = `
         #${LOREQA_CONTAINER_ID} {
             position: fixed;
-            top: 60px;
-            right: 60px;
-            width: 920px;
-            max-height: 88vh;
+            top: 40px;
+            right: 40px;
+            width: min(1120px, 96vw);
+            height: 86vh;
+            max-height: 96vh;
             background: #1e1e2e;
             color: #cdd6f4;
             border-radius: 12px;
@@ -897,6 +901,11 @@ function loreqa_injectStyles() {
             font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1;
         }
         #loreqa-close-btn:hover { color: #f38ba8; }
+        /* 창 크기 조절 손잡이 (오른쪽 아래) */
+        #${LOREQA_CONTAINER_ID} .loreqa-resize-grip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 3;
+            background: linear-gradient(135deg, transparent 0 55%, #585b70 55% 62%, transparent 62% 72%, #585b70 72% 79%, transparent 79%); }
+        /* 글자 크기: 탭과 본문을 함께 키운다 (기본 115%) */
+        #${LOREQA_CONTAINER_ID} .loreqa-tabs, #${LOREQA_CONTAINER_ID} #loreqa-body { zoom: var(--loreqa-zoom, 1.15); }
         #loreqa-body {
             flex: 1; overflow-y: auto; padding: 12px 16px;
             display: flex; flex-direction: row; gap: 12px;
@@ -1206,9 +1215,10 @@ function loreqa_injectStyles() {
                 border-radius: 0; border: none;
             }
             #canon-scout-panel #loreqa-body { flex-direction: column !important; }
+            #${LOREQA_CONTAINER_ID} .loreqa-resize-grip { display: none; }
             #${LOREQA_CONTAINER_ID} {
                 top: 0 !important; right: 0 !important; left: 0 !important; bottom: 0 !important;
-                width: 100vw !important; max-height: 100vh !important;
+                width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
                 border-radius: 0; border: none;
             }
             #loreqa-body {
@@ -1292,6 +1302,9 @@ async function loreqa_openSettingsWindow() {
     const container = document.createElement('div');
     container.id = LOREQA_CONTAINER_ID;
     loreqa_applyWindowPos(container, LOREQA_CONTAINER_ID);
+    // 저장된 창 크기 (화면보다 크면 줄임) · 글자 크기
+    { const z = loreqa_cfg.windowSize; if (z && z.w > 0 && z.h > 0) { container.style.width = Math.min(z.w, Math.max(480, window.innerWidth - 16)) + 'px'; container.style.height = Math.min(z.h, Math.max(320, window.innerHeight - 16)) + 'px'; } }
+    container.style.setProperty('--loreqa-zoom', String((Number(loreqa_cfg.uiScale) || 115) / 100));
 
     // ── 헤더 (드래그) ──
     const header = document.createElement('div');
@@ -1341,9 +1354,42 @@ async function loreqa_openSettingsWindow() {
     const onDragUp = () => { if (isDragging) loreqa_captureWindowPos(LOREQA_CONTAINER_ID); isDragging = false; };
     document.addEventListener('mousemove', onDragMove);
     document.addEventListener('mouseup', onDragUp);
+    // 크기 조절: 오른쪽 아래 손잡이. 평소 iframe 이 창 크기에 딱 맞춰져 있어, 키우는 동안 포인터가 iframe 밖으로 나가면
+    //   움직임을 놓친다. 그래서 조절하는 동안만 iframe 을 화면 전체로 펴고, 끝나면 다시 창 크기로 맞춘다.
+    const grip = document.createElement('div'); grip.className = 'loreqa-resize-grip'; grip.title = '끌어서 창 크기 조절';
+    let rs = null;
+    grip.addEventListener('mousedown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const r = container.getBoundingClientRect();
+        let offX = 0, offY = 0;
+        if (loreqa_pluginIframe && loreqa_iframeInterval) {
+            offX = parseFloat(loreqa_pluginIframe.style.left) || 0; offY = parseFloat(loreqa_pluginIframe.style.top) || 0;
+            clearInterval(loreqa_iframeInterval); loreqa_iframeInterval = null; loreqa_lastIframeRect = '';
+            try { Object.assign(loreqa_pluginIframe.style, { top: '0px', left: '0px', width: '100vw', height: '100vh' }); } catch (err) {}
+            container.style.left = offX + 'px'; container.style.top = offY + 'px'; container.style.right = 'auto';
+        }
+        rs = { x: e.clientX + offX, y: e.clientY + offY, w: r.width, h: r.height, passthrough: !!loreqa_pluginIframe };
+    });
+    const onResizeMove = (e) => {
+        if (!rs) return;
+        const w = Math.max(560, Math.min(window.innerWidth - 8, rs.w + e.clientX - rs.x)), h = Math.max(360, Math.min(window.innerHeight - 8, rs.h + e.clientY - rs.y));
+        container.style.width = w + 'px'; container.style.height = h + 'px'; container.style.maxHeight = 'none';
+    };
+    const onResizeUp = () => {
+        if (!rs) return;
+        const r = container.getBoundingClientRect(), was = rs; rs = null;
+        loreqa_cfg.windowSize = { w: Math.round(r.width), h: Math.round(r.height) };
+        if (was.passthrough) loreqa_enablePassthrough();
+        loreqa_captureWindowPos(LOREQA_CONTAINER_ID);
+        loreqa_saveConfig();
+    };
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', onResizeUp);
     loreqa_dragCleanup = () => {
         document.removeEventListener('mousemove', onDragMove);
         document.removeEventListener('mouseup', onDragUp);
+        document.removeEventListener('mousemove', onResizeMove);
+        document.removeEventListener('mouseup', onResizeUp);
         loreqa_dragCleanup = null;
     };
 
@@ -1534,6 +1580,9 @@ async function loreqa_openSettingsWindow() {
         'PDF Pod 없이 질의 본문을 PDF로 전송. 기본 끄기. PDF 입력 지원 API·모델 필요. 오류 발생 시 끄기. 이미지 PDF이므로 비용 절감은 보장되지 않습니다.'
     ));
 
+    // 설정창 글자 크기 · 창 크기 되돌리기
+    secBasic.appendChild(loreqa_createRow('글자 크기', loreqa_createSelect('loreqa-s-uiScale', [100, 110, 115, 125, 135, 150].map(v => ({ value: v, label: v + '%' + (v === 115 ? ' (기본)' : '') })), Number(loreqa_cfg.uiScale) || 115, async v => { loreqa_cfg.uiScale = Number(v); await loreqa_saveConfig(); document.getElementById(LOREQA_CONTAINER_ID)?.style.setProperty('--loreqa-zoom', String(Number(v) / 100)); }), '설정창의 탭과 본문 글자 크기. 창 크기는 오른쪽 아래 모서리를 끌어서 조절'));
+    secBasic.appendChild(loreqa_createRow('창 크기 되돌리기', loreqa_btn('기본 크기로', async () => { loreqa_cfg.windowSize = null; await loreqa_saveConfig(); await loreqa_openSettingsWindow(); }), '끌어서 바꾼 창 크기를 처음 크기로'));
     // 진행 상황 창 (Risu 본 화면 구석)
     secBasic.appendChild(loreqa_createRow('진행 상황 창', loreqa_createToggle('loreqa-s-floatOn', Number(loreqa_cfg.floatOn ?? 1) === 1, async v => { loreqa_cfg.floatOn = v ? 1 : 0; await loreqa_saveConfig(); if (!v) loreqa_floatRemove(); }), '보조 모델 호출마다 단계 · 모델 · 경과 시간, 끝나면 출력·생각 토큰과 초당 토큰을 Risu 화면 구석에 잠깐 띄움. 처음 한 번 메인 화면 접근 권한을 물을 수 있음'));
     secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }], loreqa_cfg.floatPos || 'br', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); }), '오른쪽 위는 Yumi Provider Manager 창과 겹칠 수 있음'));
@@ -3044,6 +3093,7 @@ async function loreqa_openSettingsWindow() {
     statusBar.className = 'loreqa-status-bar';
     statusBar.id = 'loreqa-status-bar';
     container.appendChild(statusBar);
+    container.appendChild(grip);
 
     document.body.appendChild(container);
     loreqa_updateStatusBar();
@@ -8643,13 +8693,23 @@ function scoutLedgerScope(snap){
     return snap.scope;
 }
 const scoutLedgerKey=scope=>'canon_scout_major_v1:'+scope;
+// 분기 기록이 읽을 메시지: 마지막 응답까지. ledgerDeferLatest 면 가장 최근 응답(그 턴)은 다음 턴에 읽는다.
+//   응답 뒤 번역(GigaTrans)·상태창·삽화 플러그인이 마지막 메시지를 고치면, 먼저 읽은 내용과 달라져 매 턴 그 메시지를
+//   '바뀜'으로 보고 다시 읽었다. 한 턴 늦게 읽으면 그런 후처리가 끝난 뒤라 무엇을 덧붙이든 상관없다.
+//   메인 모델은 최근 대화를 직접 보므로 분기 기록이 한 턴 늦는 것은 문제가 되지 않는다.
 function scoutCompleted(snap){
-    let end=snap.list.length;while(end>0&&!['char','assistant'].includes(snap.list[end-1]?.role))end--;
+    const isReply=m=>['char','assistant'].includes(m?.role);
+    let end=snap.list.length;while(end>0&&!isReply(snap.list[end-1]))end--;
+    if(Number(loreqa_cfg.ledgerDeferLatest??1)===1&&end>0){end--;while(end>0&&!isReply(snap.list[end-1]))end--;}
     return snap.list.slice(0,end).map((m,index)=>({index,role:m.role,text:scoutText(m),legacy:scoutTextLegacy(m)}));
 }
-const scoutMessageHash=m=>scoutHash(JSON.stringify([m.role,m.text]));
+// 메시지 지문: 공백·줄바꿈·태그·전각/반각·마크다운 기호 차이는 무시한다. GigaTrans 가 읽은 뒤 원문을 <GigaTrans> 안으로 옮기면서
+//   앞뒤 공백 등이 달라져, 매 턴 마지막 메시지를 '바뀜'으로 보고 다시 읽던 문제. 내용이 바뀐 수정·리롤은 그대로 잡힌다.
+const scoutHashNorm=t=>String(t||'').normalize('NFKC').replace(/<[^>]*>/g,'').replace(/[*_`#~>|]/g,'').replace(/\s+/g,'');
+const scoutMessageHash=m=>scoutHash(JSON.stringify([m.role,scoutHashNorm(m.text)]));
 // 새 해시 또는 (원문 추출 도입 전) 구 해시 중 하나라도 맞으면 같은 메시지로 인정
-const scoutHashMatch=(h,m)=>!!m&&(h===scoutMessageHash(m)||(typeof m.legacy==='string'&&m.legacy!==m.text&&h===scoutHash(JSON.stringify([m.role,m.legacy]))));
+// 예전 지문(정규화 전: 원문 그대로 / GigaTrans 원문 추출 전)도 인정한다. 업데이트로 처음부터 다시 읽지 않게
+const scoutHashMatch=(h,m)=>!!m&&(h===scoutMessageHash(m)||h===scoutHash(JSON.stringify([m.role,m.text]))||(typeof m.legacy==='string'&&m.legacy!==m.text&&(h===scoutHash(JSON.stringify([m.role,m.legacy]))||h===scoutHash(JSON.stringify([m.role,scoutHashNorm(m.legacy)])))));
 async function scoutLedgerLoad(scope){
     const raw=await risuai.pluginStorage.getItem(scoutLedgerKey(scope));
     if(!raw)return{schema:1,scope,revision:0,hashes:[],events:[],excluded:[]};
@@ -8664,9 +8724,10 @@ function scoutLedgerReconcile(ledger,messages){
     const removed=valid.length!==ledger.events.length;ledger.events=valid;
     if(common===ledger.hashes.length)return removed;
     // Editing/deletion/reroll invalidates changed and downstream extractions; unaffected earlier events survive.
-    loreqa_stat('ledger.rewind');
+    // 읽은 메시지가 바뀐 게 아니라 읽을 범위만 짧아진 경우(최신 응답 다음 턴 읽기, 마지막 메시지 삭제)는 조용히 줄이기만 한다
+    if(common<messages.length){loreqa_stat('ledger.rewind');
     // 어디서 되감겼는지 남긴다: 앞쪽 메시지가 계속 바뀌어 매번 처음부터 읽게 되는 경우를 진단 로그로 잡기 위해.
-    try{scoutLedgerLogAdd(ledger.scope,{time:new Date().toISOString(),status:`메시지 ${common}번이 저장 당시와 달라 그 뒤를 다시 읽음`,readBefore:ledger.hashes.length,rewoundTo:common,removedEvents:ledger.events.filter(e=>!e.evidence.every(v=>v.index<common)).length});scoutLedgerStatus.set(ledger.scope,`메시지 ${common}번이 바뀌어 그 뒤(${ledger.hashes.length-common}개)를 다시 읽습니다. 계속 반복되면 진단 로그를 확인하세요.`);}catch(_){}
+    try{scoutLedgerLogAdd(ledger.scope,{time:new Date().toISOString(),status:`메시지 ${common}번이 저장 당시와 달라 그 뒤를 다시 읽음`,readBefore:ledger.hashes.length,rewoundTo:common,removedEvents:ledger.events.filter(e=>!e.evidence.every(v=>v.index<common)).length});scoutLedgerStatus.set(ledger.scope,`메시지 ${common}번이 바뀌어 그 뒤(${ledger.hashes.length-common}개)를 다시 읽습니다. 계속 반복되면 진단 로그를 확인하세요.`);}catch(_){}}
     ledger.events=ledger.events.filter(e=>e.evidence.every(v=>v.index<common));
     ledger.hashes=ledger.hashes.slice(0,common);return true;
 }
@@ -9671,6 +9732,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkToggle(secSet,'compLedger','분기 추적','응답 후 원작과 달라진 사건을 기록');
     loreqa_trkToggle(secSet,'branchOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC. OC 행동이 만든 변화를 분기로 인정');
     secSet.appendChild(loreqa_createRow('메인 모델 주입',loreqa_createSelect('canon-trk-branchMainTier',[{value:'3',label:'★ 우선 + 남는 만큼'},{value:'1',label:'핵심만'},{value:'2',label:'전부'},{value:'0',label:'끔'}],String(loreqa_cfg.branchMainTier??3),async v=>{loreqa_cfg.branchMainTier=Number(v);await loreqa_saveConfig();}),'보조 모델(인물·세계관 Q&A, 시점 가드·서사 가이드)에는 항상 전부. 메인 본문 요청에는 ★ 우선 + 남는 만큼(★를 먼저 다 넣고 "메인 분기 블록 글자 수" 안에서 나머지를 최신부터 채움, 권장) / ★핵심 기록만 / 전부(넘치면 오래된 것부터 빠짐) / 안 넣음'));
+    loreqa_trkToggle(secSet,'ledgerDeferLatest','최신 응답은 다음 턴에 읽기','응답 뒤 번역(GigaTrans)·상태창·삽화 플러그인이 마지막 메시지를 고쳐도 다시 읽지 않도록, 가장 최근 응답은 다음 턴에 읽음. 분기 기록이 한 턴 늦게 반영되지만 메인 모델은 최근 대화를 직접 봄. 끄면 응답 직후 바로 읽음 ("이어서 읽기"도 같은 기준)');
     loreqa_trkToggle(secSet,'inheritBranch','브랜치 · 복사본 이어받기','Risu에서 브랜치를 따거나 채팅을 복사하면, 새 채팅에 기록이 없을 때 원본 채팅의 분기 기록(분기점 앞까지) · 전개 위치 · 위치별 메모 · 고정 변경 기록을 한 번 복사. 원본이 분기점보다 더 진행했으면 위치는 다시 판정');
     right.appendChild(secSet);
     const secModel=scoutSection('모델 · 첨부');

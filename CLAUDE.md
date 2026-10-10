@@ -72,6 +72,10 @@ comments are Korean.
 - Every "턴" setting counts turns (user input + reply = 1 turn). `maxLogs` and `posReadMsgs` used
   to count messages; `turnUnit` marks converted configs/presets (`loreqa_toTurnUnit` halves old
   values once), and `loreqa_turnStart(list, n)` finds where the last n turns start.
+- Settings window: default `min(1120px, 96vw)` × 86vh; bottom-right grip resizes it (the plugin
+  iframe is spread full-screen while resizing, then re-fitted; size in `windowSize`). Text size
+  `uiScale` (%, default 115) is CSS `zoom` on the tabs and body only, so the window rect and the
+  iframe passthrough stay in pixels.
 - Settings UI layout in each mode tab: frequently used toggles first, then small topic sections
   (모델 · 검색/첨부, 캐릭터 & 보정, 시간 점프), and numbers / caps last in a collapsed
   `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold.
@@ -111,6 +115,13 @@ comments are Korean.
   (auto-read interval). Panel: "이어서 읽기", "처음부터 다시 읽기", "기록 두고 다시 훑기"
   (resets read position; `rescanPrev` lets "읽기 중지" roll it back), "시작 위치" input.
 - `scoutLedgerReconcile` rewinds when an earlier message changed; it logs the index.
+  `scoutMessageHash` hashes `scoutHashNorm(text)` (no whitespace / tags / markdown / width
+  differences): GigaTrans rewrites the last reply after we read it (original moves into
+  `<GigaTrans>`, trimmed), which used to rewind and re-read one message every turn.
+  `scoutHashMatch` still accepts the older un-normalised hashes.
+  `ledgerDeferLatest` (default on): `scoutCompleted` stops before the newest reply, so it is read
+  next turn, after GigaTrans / status-panel / illustration plugins have rewritten it. Reconcile
+  only logs a rewind when a message really changed (a shorter readable range is trimmed quietly).
 - Branch PDF toggle exists, but PDF renders text as images, so quote matching suffers.
 
 ### Position (전개모드)
