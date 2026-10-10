@@ -94,63 +94,25 @@ comments are Korean.
   audit only when `ledgerAudit` is on; default off, it doubles the requests) → `scoutLedgerExtractRequest` → `scoutLedgerValidate(…, {lenient:true})`.
   Evidence quotes must be substrings of the message (normalized for quotes/whitespace);
   bad events are dropped, not the whole batch; one corrective retry.
-- Prompt = `LOREQA_PROMPTS.ledger` (gate A/B/C) + locked JSON part from
-  `SCOUT_LEDGER_EXTRACT` (patched in `scoutLedgerExtractRule`: adds `review` lines and
-  the `core` flag).
-- Gate in plain words: record only what a writer who knows the original but not this
-  chat's history would get wrong, that is still a current state, and that involves at
-  least one canon character / group / place / event. No OC–OC-only records, no canon
-  events with the same outcome, no trips/meals/"was present", no in-progress states.
-- `SCOUT_LEDGER_KEEP_TRUE` (in the locked part, so customised gate prompts get it too): a new
-  message that ends / reverses a state already in the ledger must update that same entity +
-  dimension, overriding the gate (joining a group passed as "side or group" but leaving was
-  filtered as "travel", leaving a false record). `SCOUT_TIDY_LOCKED` has the same rule for tidy.
-  The locked part also has NOTHING BEYOND THE EVIDENCE: details (which parent a sibling shares,
-  titles, dates, places, reasons) must be in the quotes or player_persona; "write in detail" made the
-  model invent 異父兄 from "そなたの兄". Each extraction log entry has `attached` (persona /
-  author-note chars, cut by attachChars?). `attachChars` (default 0 = no cap; old saved 4000 → 0 once via
-  `attachV`) is shared by every mode, so it lives in the 기본·프리셋 tab with a "페르소나 확인" row. Persona comes from `getDatabase(['personas','selectedPersona'])`
-  (needs the user's DB permission; Risu's own `personaPrompt` key is not exposed to plugins, chat-bound
-  personas may differ); `loreqa_personaLast` keeps why it failed, "페르소나 확인" shows it.
-  OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
-  that is long-term memory's job, not the divergence ledger's. The locked part also defines gate C: the
-  canon element must be what changed or what is affected; a canon character who only tells / warns /
-  witnesses / is present does not count (a record about an invented bandit fort passed because Kagome
-  told the OC about it). Tidy's locked part drops such records too.
-  RELATIONSHIPS (locked): how a canon character feels about / treats the OC is a canon change and its own
-  "relationship with <name>" record, never mixed with knowledge records; time together is not recorded but the
-  resulting change in feelings is; the extractor compares the ledger's relationship record with new messages and
-  updates it when the relationship has moved on (2-turn batches never saw slow arcs: ledger-04 had 21 records,
-  all first meetings / joins / the sword, none about feelings, and Inuyasha was still "confronting" her).
-- Player character slots (`LOREQA_PC_SLOTS`, locked PLAYER CHARACTER STATE rule): records on `player_character`
-  with `slot` = party / home / standing (one record each) or items / condition / secrets / promises (one per thing).
-  Only what the story changed vs the persona; exempt from gate C, nothing else about her is. `loreqa_stateKey` dedupes
-  by entity + slot (+ dimension for multi slots), so differently worded "同行" records still replace each other.
-  The slot survives validation, projection, manual add / edit (select), import / export and tidy merges. Main
-  injection: slot records always go in with the branch block (also on tier 1 "★만"), first, under "## <name>의 지금
-  상태". Relationship records hold both directions; where she is / what she carries never goes in canon records.
-  Knowledge records hold no feelings; in-progress states are updated when finished.
-  `loreqa_slotOf` trusts a dimension that names a slot over the slot field (tidy once tagged a "party" record as
-  standing, so a stale "alone" and a stale "with the group" both reached the main model); tidy keeps the source slot.
-  The review line must report joins / leaves, items gained / used up and promises (the farewell at 188 and the
-  finished sword at 197 were missed); used-up items are rewritten, a forged item gets its own record.
-  INVALIDATES (locked + default prompt): records about the OC leave it "" unless they change a fact of the original
-  beyond her existence (a canon character's own situation, side, plan, item, knowledge). "She doesn't exist", "they
-  never met", "no such relationship / no sister in the original" are banned: the persona already says it. The earlier
-  "write the canon assumption the record overturns" rule made every relationship record repeat "Inuyasha has no
-  sister in the original", and a "state it once" rule never stopped it. "after" (locked) = the current state in one or two sentences, no scene
-  details (blushing, smiles, smells); an update carries over what is still true from the record it replaces. Same
-  entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest). Tidy (locked)
-  must merge them, following the newest where they differ (a merge once kept "still travelling together" after she
-  left), and single-record-rewrites scene-heavy "after" / repeated premises; any same-key group the model leaves is
-  cut to the newest in code (`scoutLedgerTidyWork`, reason '같은 항목의 더 최근 기록이 대신함'). A merge output also replaces
-  leftover originals with its key. Don't rely on tidy for quality: it only touches records it mentions and its
-  rewrites can be wrong. Record quality comes from extraction rules; deterministic cleanup belongs in code.
-- NAMES (locked, extract + tidy): one spelling/script per person, copied from the ledger or as the story writes it,
-  never romanized; dimensions in the record language (the English "relationship with <name>" template produced
-  "knowledge of Sayo" next to 「小夜」).
-- Prompt examples use [bracketed placeholders], never a real work's names or titles (they were Harry Potter): when the
-  user runs that work, the model copies the example into the ledger / labels without evidence.
+- Prompt (rewritten in 3.3.0 from the Inuyasha test log): ALL judgement rules live in the editable default
+  `LOREQA_PROMPTS.ledger`, in sections: 1 what is a record (A wrong by default / B true now and needed later /
+  C about the original; invented people/places/plans never, generic words = invented), 2 kinds (canon change,
+  knowledge without feelings, relationship both directions one per canon character, changed event), 3 player
+  character slots, 4 keep the ledger true (same entity+dimension+slot, carry over what is still true), 5 how to
+  write (names never romanized, lasting-state dimension, after = 1-2 sentences without scene details, invalidates
+  "" when the only point is her existence / meeting / a relationship the original lacks, nothing beyond the
+  evidence, core list, story's language). `scoutLedgerExtractRule` appends only quote rules and the locked JSON tail of
+  1.3's `SCOUT_LEDGER_EXTRACT` (review line, core, slot). The old patch pile (`SCOUT_LEDGER_KEEP_TRUE`) and the OC
+  rule that said "never record the OC's facts or who knows them" are gone. Tidy: same structure, `SCOUT_TIDY_LOCKED`
+  is ids + slot + JSON only. Prompt examples use [bracketed placeholders], never a real work's or the owner's names.
+- Player character slots (`LOREQA_PC_SLOTS`): records on `player_character` with `slot` = party / home / standing
+  (one record each) or items / condition / secrets / promises (one per thing). `loreqa_stateKey` dedupes by entity +
+  slot (+ dimension for multi slots); `loreqa_slotOf` trusts a dimension that names a slot. The slot survives
+  validation, projection, manual add / edit, import / export and tidy merges. Main injection: slot records always go
+  in with the branch block (also on tier 1), first, under "## <name>의 지금 상태".
+- Same entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy's code
+  fallback cuts any same-key group to the newest, and a merge output replaces leftovers with its key. Don't rely on
+  tidy for quality: record quality comes from the extraction prompt; deterministic cleanup belongs in code.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
   latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
