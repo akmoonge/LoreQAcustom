@@ -58,6 +58,11 @@ comments are Korean.
   위치 10k / 분기 묶음 12k); ledger read interval = min(batch, remembered turns / 3, helper window
   + maxGap 2), chosen from a 10-environment simulation. All ratios and tiers are guesses until
   usage data.
+- 진행 상황 창: `loreqa_callLLM` is now a thin wrapper that records each helper call (step name
+  from `requestOptions.step`, else inferred) and calls `loreqa_callLLMRaw`. Cards are drawn into
+  Risu's main page via `risuai.getRootDocument()` (`.loreqa-float`, fixed, pointer-events none),
+  like provider-manager's floating window. No streaming: running time, then output / thinking
+  tokens and t/s. Settings `floatOn`, `floatPos`. Pass `step:` when adding a new helper call.
 - Usage stats (`loreqacustom_stats`, no chat text / work title / keys / model names):
   `loreqa_stat(key, n)`, `loreqa_statTime(key, ms)`, `loreqa_statUsage(prefix, usage)`; hooks in
   position judge (reason + changed/same), time-jump, ledger extract/audit/batch/added/rewind, tidy,
@@ -107,7 +112,15 @@ comments are Korean.
   Source). Keys `n:<nums>`, `pre:` (before the original starts), `post:`.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
-- Guard regenerates only on position change; guide on position change or ledger count change.
+- 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
+  web search): `[PUBLIC]` lines (who is where doing what now) go in the `[Canon Guide]` block as
+  off-screen world state, not "next events" (old event lists dragged canon into the OC's scene);
+  `[HIDDEN]` lines are secrets. Stored as `byPos[key].world` {raw,pub,hidden,v,n,divN}; regenerated
+  on position / ledger-count / `worldCount` change. 시점 가드 = `loreqa_pickSceneSecrets` picks up
+  to `sceneSecretMax` hidden lines for the current scene (jump API, no search; skipped when few),
+  stored as `byPos[key].scene` {gen,w,picks}; re-picked when `st.sceneGen` bumps (time-jump
+  detector now answers time + SAME/NEW scene) or the table changes. Old `guard`/`guide` prompts
+  and `secrets`/`guide` fields are unused.
 - JSON: `loreqa_posExport/Import` (`loreqacustom-position-v1`: `cur` + `byPos`); import sets
   `guideDivN` to this chat's count so the imported guide is not regenerated at once.
 

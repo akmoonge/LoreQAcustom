@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.16
+//@version 3.2.17
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -15,6 +15,8 @@ if (typeof risuai === "undefined") {
 const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
     active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
+    floatOn: 1,        // 진행 상황 창 (보조 호출마다 단계 · 시간 · 토큰)
+    floatPos: 'tr',    // 진행 상황 창 위치: tr | br | tl | bl
     activePrev: 1,     // 머리의 '전체 ON/OFF'로 끄기 전 active 값 (다시 켤 때 복원)
     onlyCharName: '',  // active=3 ('현재 봇에서만') 에 바인딩된 캐릭터 이름
     onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
@@ -78,7 +80,9 @@ const LOREQA_DEFAULTS = {
     jumpApi:    '',    // 시간 점프 감지 API ('' = 전개모드 API)
     jumpModel:  '',    // 시간 점프 감지 모델 이름
     jumpReasoning: 'low', // 시간 점프 감지 추론 수준: low | minimal | '' (모델 기본) | medium | high | profile (API 프로필 설정 그대로)
-    guideCount: 3,     // 서사 가이드에 담을 다음 원작 사건 수
+    guideCount: 3,     // (구버전) 서사 가이드 사건 수. 세계 상태표로 바뀐 뒤로는 쓰지 않음
+    worldCount: 8,     // 세계 상태표의 공개 상태 줄 수 (주요 인물·세력)
+    sceneSecretMax: 4, // 시점 가드: 장면마다 고르는 숨은 상태 수
     guideStrength: 0,  // 0=참고만, 1=그 방향으로 유도
     flowMigrated: 0,
     instrOnly:  0,     // 기본 지시문 없이 1차 추가 지침만으로 Q&A (기존 '지침 없음' 모드)
@@ -97,7 +101,7 @@ const LOREQA_DEFAULTS = {
     qaMemoAChars: 240,   // 위치별 원작 메모: 답 저장 글자 수 (반복 방지용 요지)
     qaKeep: 12,          // 위치별 원작 메모: 위치당 보관 개수
     qaRecent: 8,         // 위치별 원작 메모: 1차 질의에 '이미 다룬 질문'으로 넣는 개수
-    guardChars: 6000,    // 시점 가드 결과 글자 수
+    guardChars: 6000,    // (구버전) 시점 가드 결과 글자 수. 세계 상태표로 바뀐 뒤로는 guideChars 하나로 셈
     guideChars: 6000,    // 서사 가이드 결과 글자 수
     fixedChars: 3000,    // 고정 변경 기록 주입 글자 수
     divMainChars: 6000,  // 메인 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
@@ -249,7 +253,7 @@ function loreqa_statsSettings() {
         fameTier: c.fameTier || '', env: { ctx: c.envCtx, prompt: c.envPrompt, out: c.envOut, in: c.envIn, lang: c.envLang, rule: c.envRule || {} },
         modes: pick(['modeChar', 'modeSet', 'modeBranch', 'modeFlow', 'instrOnly']),
         sub: pick(['compLedger', 'compPosition', 'compGuard', 'compGuide', 'guideStrength', 'jumpDetect', 'jumpWait', 'flowDoubt', 'inheritBranch', 'branchMainTier', 'canonMedium']),
-        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'guideCount']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
+        n: { ...pick(['ledgerEvery', 'ledgerBatchTurns', 'ledgerBatchChars', 'ledgerTidyEvery', 'posModelEvery', 'posReadMsgs', 'posReadChars', 'divMainChars', 'divHelperChars', 'helperDivMax', 'worldCount', 'sceneSecretMax']), charLogs: mc.char.maxLogs, setLogs: mc.set.maxLogs },
         qa: { char: { lore: mc.char.lore, search: mc.char.search, verifySearch: mc.char.verifySearch }, set: { lore: mc.set.lore, search: mc.set.search, verifySearch: mc.set.verifySearch } },
         apiTypes: { main: c.apiType, branch: c.branchApi || '', flow: c.flowApi || '', jump: c.jumpApi || '', char: mc.char.modeApi || '', set: mc.set.modeApi || '' },
     };
@@ -431,7 +435,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -485,7 +489,7 @@ const LOREQA_FAME = {
 };
 const LOREQA_FAME_LABELS = {
     modeChar: '인물모드', modeSet: '세계관모드', instrOnly: '추가 지침만 모드', modeBranch: '분기모드', compLedger: '분기 추적', branchMainTier: '메인 분기 주입',
-    modeFlow: '전개모드', compPosition: '위치 추적', compGuard: '시점 가드', compGuide: '서사 가이드', guideStrength: '서사 가이드 강도', jumpDetect: '시간 점프 감지', flowDoubt: '전개 "틀릴 수 있음" 경고',
+    modeFlow: '전개모드', compPosition: '위치 추적', compGuard: '시점 가드', compGuide: '서사 가이드 (세계 상태)', guideStrength: '서사 가이드 강도', jumpDetect: '시간 점프 감지', flowDoubt: '전개 "틀릴 수 있음" 경고',
     lore: '질의 방식', search: '1차 웹 검색', verifySearch: '2차 웹 검색', doubt: '"틀릴 수 있음" 경고',
 };
 function loreqa_fameValue(k, v) {
@@ -1517,6 +1521,10 @@ async function loreqa_openSettingsWindow() {
         loreqa_createToggle('loreqa-s-pdfSend', Number(loreqa_cfg.pdfSend) === 1, v => update('pdfSend', v ? 1 : 0)),
         'PDF Pod 없이 질의 본문을 PDF로 전송. 기본 끄기. PDF 입력 지원 API·모델 필요. 오류 발생 시 끄기. 이미지 PDF이므로 비용 절감은 보장되지 않습니다.'
     ));
+
+    // 진행 상황 창 (Risu 본 화면 구석)
+    secBasic.appendChild(loreqa_createRow('진행 상황 창', loreqa_createToggle('loreqa-s-floatOn', Number(loreqa_cfg.floatOn ?? 1) === 1, async v => { loreqa_cfg.floatOn = v ? 1 : 0; await loreqa_saveConfig(); if (!v) loreqa_floatRemove(); }), '보조 모델 호출마다 단계 · 모델 · 경과 시간, 끝나면 출력·생각 토큰과 초당 토큰을 Risu 화면 구석에 잠깐 띄움. 처음 한 번 메인 화면 접근 권한을 물을 수 있음'));
+    secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }], loreqa_cfg.floatPos || 'tr', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); })));
 
     // 활성화 모드
     secBasic.appendChild(loreqa_createRow(
@@ -3301,7 +3309,7 @@ function loreqa_buildTabs(p) {
     const [fl, fr] = split('flow', [], []);
     panes.flow.pane.classList.add('loreqa-pane-track');
     loreqa_buildFlowContent(fl, fr);
-    fr.appendChild(loreqa_promptSection(['pos', 'guard', 'guide', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'guideRef', 'guideSteer', 'flowDoubt']));
+    fr.appendChild(loreqa_promptSection(['pos', 'world', 'scenePick', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'guideRef', 'guideSteer', 'flowDoubt']));
     // 기본 · 프리셋: 원작 Q&A 공통 설정 포함
     // 공통 칸(원작 Q&A 공통, 캐릭터 & 보정, 1차 질의)은 모드별 설정으로 옮겨 갔으니 화면에서 뺀다
     p.secLore.remove(); p.secChar.remove(); p.secFirst.remove();
@@ -3382,7 +3390,7 @@ async function loreqa_renderBoard() {
             const st = await loreqa_posLoad(snap.scope);
             if (st.cur) {
                 const b = st.byPos[st.cur.key] || {};
-                info = `${st.cur.label}${st.cur.guess ? ' (추정)' : ''} · 가드 ${c.compGuard ? (b.secrets ? '있음' : '없음') : '끔'} · 가이드 ${c.compGuide ? (b.guide ? '있음' : '없음') : '끔'}`;
+                info = `${st.cur.label}${st.cur.guess ? ' (추정)' : ''} · 상태표 ${b.world ? `공개 ${b.world.pub.length} · 숨은 ${b.world.hidden.length}` : (c.compGuard || c.compGuide ? '없음' : '끔')} · 장면 비밀 ${c.compGuard ? (b.scene?.picks?.length ?? 0) + '개' : '끔'} · 세계 상태 ${c.compGuide ? (b.world?.pub?.length ? '주입' : '없음') : '끔'}`;
             }
         }
         rows.push(['전개', '켜짐', info]);
@@ -3444,38 +3452,41 @@ async function loreqa_renderStatus() {
     );
     card.appendChild(row);
     if (loreqa_posMsg) { const m = loreqa_el('div', 'loreqa-muted', loreqa_posMsg); m.style.marginTop = '6px'; card.appendChild(m); }
-    if (st.cur && loreqa_flowOn('compGuard')) {
-        const b = st.byPos[st.cur.key];
-        const d = loreqa_el('details'); d.open = !b?.secrets;
-        d.appendChild(loreqa_el('summary', '', b?.secrets && b.guardV === LOREQA_GUARD_V ? '시점 가드 — 지금 존재하는 비밀과 모르는 인물 (수정 가능)' : '시점 가드 — 다음 요청 때 생성됩니다'));
-        const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '120px'; area.value = b?.secrets || '';
-        d.append(area,
-            loreqa_btn('저장', async () => { const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label); bk.secrets = area.value.trim(); bk.guardV = LOREQA_GUARD_V; await loreqa_posSave(snap.scope, s2); }),
-            loreqa_btn('다시 생성', async e => {
-                e.target.disabled = true;
-                const div = loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap).catch(() => ({ events: [], excluded: [] }))));
-                const text = await loreqa_generateGuard(st.cur.label, div);
-                if (!text) { loreqa_posMsg = '✗ 시점 가드 생성 실패: ' + (loreqa_state?.lastError || '빈 응답') + ' — 기존 목록은 그대로 둡니다.'; loreqa_renderStatus(); return; }
-                const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label); bk.secrets = text; bk.guardV = LOREQA_GUARD_V; await loreqa_posSave(snap.scope, s2);
-                loreqa_renderStatus();
-            }));
-        card.appendChild(d);
-    }
-    if (st.cur && loreqa_flowOn('compGuide')) {
-        const b = st.byPos[st.cur.key];
-        const d = loreqa_el('details'); d.open = !b?.guide;
-        d.appendChild(loreqa_el('summary', '', b?.guide ? '서사 가이드 — 다음 원작 사건 (수정 가능)' : '서사 가이드 — 다음 요청 때 생성됩니다'));
-        const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '120px'; area.value = b?.guide || '';
-        d.append(area,
-            loreqa_btn('저장', async () => { const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label); bk.guide = area.value.trim(); bk.guideV = LOREQA_GUIDE_V; bk.guideN = Number(loreqa_cfg.guideCount) || 3; bk.guideDivN = -2; await loreqa_posSave(snap.scope, s2); }),
-            loreqa_btn('다시 생성', async e => {
-                e.target.disabled = true;
-                const div = loreqa_branchOn('compLedger') ? loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap).catch(() => ({ events: [], excluded: [] })))) : [];
-                const text = await loreqa_generateGuide(st.cur.label, div);
-                if (!text) { loreqa_posMsg = '✗ 서사 가이드 생성 실패: ' + (loreqa_state?.lastError || '빈 응답') + ' — 기존 내용은 그대로 둡니다.'; loreqa_renderStatus(); return; }
+    // 세계 상태표 (서사 가이드 · 시점 가드 재료): [PUBLIC] 은 서사 가이드로, [HIDDEN] 은 장면마다 골라 시점 가드로
+    if (st.cur && (loreqa_flowOn('compGuard') || loreqa_flowOn('compGuide'))) {
+        const b = st.byPos[st.cur.key], W = b?.world;
+        const d = loreqa_el('details'); d.open = !W;
+        d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length}줄 · 숨은 ${W.hidden.length}줄 (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
+        d.appendChild(loreqa_el('div', 'loreqa-muted', '[PUBLIC] 아래 줄은 서사 가이드(화면 밖 원작 세계의 상태)로, [HIDDEN] 아래 줄은 시점 가드 후보로 쓰입니다. 시점 가드는 그중 지금 장면에 닿는 것만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
+        const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '160px'; area.value = W?.raw || '';
+        const picked = loreqa_el('div', 'loreqa-muted'); picked.style.marginTop = '6px'; picked.style.whiteSpace = 'pre-wrap';
+        if (W && loreqa_flowOn('compGuard')) {
+            const ps = b.scene?.picks || [];
+            picked.textContent = W.hidden.length ? ('이 장면의 비밀 (시점 가드로 들어감):\n' + (ps.length ? ps.map(i => '- ' + W.hidden[i]).join('\n') : '(해당 없음)')) : '숨은 상태가 없어 시점 가드에 넣을 것이 없습니다.';
+        }
+        const say = m => { loreqa_posMsg = m; loreqa_renderStatus(); };
+        d.append(area, picked,
+            loreqa_btn('저장', async () => {
+                const p = loreqa_parseWorld(area.value);
+                if (!p.pub.length && !p.hidden.length) { say('✗ [PUBLIC] / [HIDDEN] 아래에 "- " 로 시작하는 줄이 없습니다.'); return; }
+                const div = await loreqa_helperDivergences(snap);
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
-                bk.guide = text; bk.guideV = LOREQA_GUIDE_V; bk.guideN = Number(loreqa_cfg.guideCount) || 3; bk.guideDivN = div.length; await loreqa_posSave(snap.scope, s2);
-                loreqa_renderStatus();
+                // 직접 고친 표는 분기 기록 수가 그대로인 동안 다시 만들지 않는다
+                bk.world = { raw: area.value.trim(), pub: p.pub, hidden: p.hidden, v: LOREQA_WORLD_V, n: Number(loreqa_cfg.worldCount) || 8, divN: div.length };
+                delete bk.scene; await loreqa_posSave(snap.scope, s2); say('✓ 세계 상태표를 저장했습니다. 장면 비밀은 다음 요청 때 다시 고릅니다.');
+            }),
+            loreqa_btn('다시 생성', async e => {
+                e.target.disabled = true;
+                const div = await loreqa_helperDivergences(snap);
+                const fresh = await loreqa_generateWorld(st.cur.label, div);
+                if (!fresh) { say('✗ 세계 상태표 생성 실패: ' + (loreqa_state?.lastError || '빈 응답') + ' — 기존 표는 그대로 둡니다.'); return; }
+                const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
+                bk.world = { ...fresh, divN: div.length }; delete bk.scene; await loreqa_posSave(snap.scope, s2);
+                say('✓ 세계 상태표를 다시 만들었습니다.');
+            }),
+            loreqa_btn('장면 비밀 다시 고르기', async () => {
+                const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
+                delete bk.scene; await loreqa_posSave(snap.scope, s2); say('다음 요청 때 이 장면의 비밀을 다시 고릅니다.');
             }));
         card.appendChild(d);
     }
@@ -3532,8 +3543,8 @@ async function loreqa_renderRecords() {
     for (const k of keys.reverse()) {
         const b = st.byPos[k];
         const d = loreqa_el('details');
-        d.appendChild(loreqa_el('summary', '', `${k === st.cur?.key ? '● ' : ''}${b.label} · Q&A ${b.qa?.length || 0}개${b.secrets ? ' · 가드 있음' : ''}`));
-        if (b.secrets) d.appendChild(loreqa_el('pre', 'loreqa-pre', b.secrets));
+        d.appendChild(loreqa_el('summary', '', `${k === st.cur?.key ? '● ' : ''}${b.label} · Q&A ${b.qa?.length || 0}개${b.world ? ' · 상태표 있음' : ''}`));
+        if (b.world?.raw) d.appendChild(loreqa_el('pre', 'loreqa-pre', b.world.raw));
         for (const e of b.qa || []) d.appendChild(loreqa_el('pre', 'loreqa-pre', `Q: ${e.q}\nA: ${e.a}`));
         d.appendChild(loreqa_btn('이 위치 메모 삭제', async () => {
             if (!confirm(`"${b.label}" 메모를 삭제할까요?`)) return;
@@ -5561,7 +5572,103 @@ function loreqa_parseSSE(rawText) {
     return { content, model, usage, type: 'message', role: 'assistant' };
 }
 
+// ── 진행 상황 창: Risu 본 화면 구석에 보조 모델 호출마다 단계 · 모델 · 경과 시간 · 토큰을 띄운다 ──
+//   risuai.getRootDocument() 로 본 화면에 붙인다 (provider-manager 의 플로팅 창과 같은 방식). 클릭은 통과시킨다.
+//   스트리밍을 쓰지 않으므로 진행 중에는 경과 시간만, 끝나면 출력 · 생각 토큰과 초당 토큰을 보여 준다.
+const LOREQA_FLOAT_CLASS = 'loreqa-float';
+const loreqa_float = { calls: [], seq: 0, el: null, denied: 0, timer: null, chain: Promise.resolve() };
+const loreqa_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LOREQA_REASON_LABEL = { minimal: '최소', low: '낮음', medium: '중간', high: '높음' };
+// 생각(추론) 토큰: API가 따로 알려 줄 때만
+function loreqa_thinkTokens(u) {
+    if (!u) return null;
+    const v = u.thoughtsTokenCount ?? u.output_tokens_details?.reasoning_tokens ?? u.completion_tokens_details?.reasoning_tokens;
+    return Number.isFinite(Number(v)) ? Number(v) : null;
+}
+function loreqa_floatStart(step, apiType, profile, opts) {
+    if (Number(loreqa_cfg.floatOn ?? 1) !== 1) return null;
+    let lv = profile?.reasoningLevel || '';
+    if (opts?.ledgerJson && ['gemini', 'vertex'].includes(apiType)) lv = 'low';
+    const c = { id: ++loreqa_float.seq, step, model: `${LOREQA_API_NAMES[apiType] || apiType} · ${profile?.apiModel || '?'}`, lv, start: Date.now(), end: 0, ok: null };
+    loreqa_float.calls.push(c);
+    loreqa_floatKick();
+    return c;
+}
+function loreqa_floatEnd(c, result, error) {
+    if (!c) return;
+    c.end = Date.now();
+    const text = typeof result === 'string' ? result : result?.text;
+    c.ok = !error && !!String(text || '').trim();
+    const u = loreqa_formatUsage(result?.usage);
+    c.out = u ? u.output : null; c.think = loreqa_thinkTokens(result?.usage);
+    if (!c.ok) c.err = String(error?.message || error || loreqa_state?.lastError || '빈 응답').slice(0, 120);
+    loreqa_floatKick();
+}
+function loreqa_floatHtml() {
+    const now = Date.now(), keepOk = 6000, keepErr = 12000;
+    loreqa_float.calls = loreqa_float.calls.filter(c => !c.end || now - c.end < (c.ok ? keepOk : keepErr)).slice(-6);
+    if (!loreqa_float.calls.length) return '';
+    const pos = { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'top:10px;right:10px';
+    const card = c => {
+        const sec = ((c.end || now) - c.start) / 1000;
+        let line;
+        if (!c.end) line = `<span style="color:#f9e2af">요청 중…</span> ${sec.toFixed(1)}초`;
+        else if (!c.ok) line = `<span style="color:#f38ba8">실패</span> · ${sec.toFixed(1)}초<div style="color:#f38ba8;font-size:11px">${loreqa_esc(c.err)}</div>`;
+        else {
+            const tps = c.out && sec > 0 ? ` · ${(c.out / sec).toFixed(0)} t/s` : '';
+            line = `<span style="color:#a6e3a1">완료</span>${c.out != null ? `: 출력 ${c.out.toLocaleString()}토큰` : ''}${c.think != null ? ` (생각 ${c.think.toLocaleString()})` : ''} · ${sec.toFixed(1)}초${tps}`;
+        }
+        return `<div style="background:rgba(17,17,27,.92);border:1px solid #313244;border-radius:8px;padding:6px 10px;color:#cdd6f4;font:12px/1.45 sans-serif;width:240px;box-shadow:0 2px 8px rgba(0,0,0,.35)">`
+            + `<div style="font-weight:600">LoreQA · ${loreqa_esc(c.step)}</div>`
+            + `<div style="color:#a6adc8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${loreqa_esc(c.model)}${c.lv ? ' · 추론 ' + (LOREQA_REASON_LABEL[c.lv] || loreqa_esc(c.lv)) : ''}</div>`
+            + `<div>${line}</div></div>`;
+    };
+    return `<div style="position:fixed;${pos};z-index:1000;display:flex;flex-direction:column;gap:6px;pointer-events:none">${loreqa_float.calls.map(card).join('')}</div>`;
+}
+async function loreqa_floatRender() {
+    const html = Number(loreqa_cfg.floatOn ?? 1) === 1 ? loreqa_floatHtml() : '';
+    if (!html && !loreqa_float.el) return;
+    if (!loreqa_float.el) {
+        // 권한이 거부됐으면 30초 동안 다시 묻지 않는다
+        if (Date.now() - loreqa_float.denied < 30000) return;
+        try {
+            const doc = typeof risuai !== 'undefined' && typeof risuai.getRootDocument === 'function' ? await risuai.getRootDocument() : null;
+            if (!doc) { loreqa_float.denied = Date.now(); return; }
+            let el = await doc.querySelector('.' + LOREQA_FLOAT_CLASS);
+            if (!el) {
+                const body = await doc.querySelector('body'); if (!body) { loreqa_float.denied = Date.now(); return; }
+                el = await doc.createElement('div'); await el.addClass(LOREQA_FLOAT_CLASS); await body.appendChild(el);
+            }
+            loreqa_float.el = el;
+        } catch (e) { loreqa_float.denied = Date.now(); console.warn('[LoreQA] 진행 상황 창을 붙이지 못했습니다:', e?.message || e); return; }
+    }
+    try { await loreqa_float.el.setInnerHTML(html); } catch (e) { loreqa_float.el = null; }
+}
+// 그리기는 한 줄로 세운다. 진행 중이거나 곧 사라질 카드가 있으면 0.5초마다 다시 그린다.
+function loreqa_floatKick() {
+    loreqa_float.chain = loreqa_float.chain.then(loreqa_floatRender).catch(() => {});
+    if (!loreqa_float.timer) loreqa_float.timer = setInterval(() => {
+        if (!loreqa_float.calls.length) { clearInterval(loreqa_float.timer); loreqa_float.timer = null; }
+        loreqa_float.chain = loreqa_float.chain.then(loreqa_floatRender).catch(() => {});
+    }, 500);
+}
+async function loreqa_floatRemove() {
+    if (loreqa_float.timer) { clearInterval(loreqa_float.timer); loreqa_float.timer = null; }
+    loreqa_float.calls = [];
+    try { await loreqa_float.el?.remove(); } catch (e) {}
+    loreqa_float.el = null;
+}
+// 모든 보조 모델 호출이 지나가는 곳: 진행 상황 창에 기록만 하고 실제 호출은 loreqa_callLLMRaw 가 한다
 async function loreqa_callLLM(messages, enableSearch = false, overrideApiType = null, overrideProfile = null, mcpSearchEnabled = false, mcpOnly = false, requestOptions = {}) {
+    const apiType = overrideApiType || loreqa_cfg.apiType || 'gemini';
+    const profile = overrideProfile || loreqa_getProfile();
+    const qaName = { char: '인물 Q&A', set: '세계관 Q&A' }[loreqa_activeMode];
+    const step = requestOptions?.step || (requestOptions?.ledgerJson ? '분기 추출' : qaName || '보조 호출');
+    const c = loreqa_floatStart(step, apiType, profile, requestOptions);
+    try { const r = await loreqa_callLLMRaw(messages, enableSearch, overrideApiType, overrideProfile, mcpSearchEnabled, mcpOnly, requestOptions); loreqa_floatEnd(c, r); return r; }
+    catch (e) { loreqa_floatEnd(c, null, e); throw e; }
+}
+async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType = null, overrideProfile = null, mcpSearchEnabled = false, mcpOnly = false, requestOptions = {}) {
     // silent 호출(병렬 모드의 사전정보·분기 추출)은 원작견 LORE Q&A 패널에 진행 상황을 쓰지 않는다.
     //   그러지 않으면 원작견이 결과를 표시한 뒤에도 사전정보 쪽 '⏳ API 요청 중' 이 덮어써 멈춘 것처럼 보인다.
     const _panel = requestOptions.silent ? () => {} : loreqa_updateLorePanel;
@@ -7073,28 +7180,27 @@ Evidence, in order of trust:
 1. In-story dates and times (if given). Use them when the original's chronology for that period is documented. Many originals have vague, inconsistent or no dates: in that case do not force a match by date, and rely on 2 and 3.
 2. Story-progress markers in the chat: which original events are referred to as already past or still ahead, characters' ages or school years, terms, seasons, holidays, story arcs or locations that only exist in a certain period.
 3. Never match by topical similarity. A roleplay scene that resembles, or talks about, a later original scene does NOT move the timeline forward, and a divergent roleplay event does not map to the original event it resembles.` } },
-    guard: { label: '시점 가드 생성', ph: ['source', 'position', 'language'],
-        locked: '잠긴 부분 없음 (결과를 그대로 주입). 이미 만든 목록은 위치 카드의 다시 생성을 눌러야 바뀜',
-        def: { en: `You are a canon reference for "{{source}}". The roleplay is at this point of the original: "{{position}}".
-List the SECRETS THAT ALREADY EXIST at this point: facts that are already true now, which some characters know and others do not, and which a character in this part of the story could plausibly reveal or act on by mistake.
-Write each item as "<who does not know> does not know <fact>", optionally followed by "; known to <who>".
-Rules:
-- Only facts already true at this point. Do NOT list future events or later plot developments: characters cannot know them anyway, and listing them only spoils the story and pulls it toward the original's later plot.
-- Skip secrets unconnected to the characters active in this period of the story.
-- Exclude anything already revealed by this point in the original, and anything the roleplay's confirmed changes have revealed.
-- At most 8 items, the ones most likely to leak first.
-Use web search to check what has been revealed by this point instead of relying on memory.
-Output a plain list in {{language}}, one item per line starting with "- ". No preamble, no closing remarks.` } },
-    guide: { label: '서사 가이드 생성', ph: ['source', 'position', 'count', 'mediumRule', 'language'],
-        locked: '잠긴 부분 없음 (결과를 그대로 주입). 이미 만든 가이드는 위치 카드의 다시 생성을 눌러야 바뀜',
-        def: { en: `You are a canon progression guide for "{{source}}". The roleplay is at this point of the original: "{{position}}". {{mediumRule}}
-List the next {{count}} major events of the ORIGINAL story after this point, in order. For each event, say in one or two sentences what happens and who is involved.
-Then compare each event with the roleplay's confirmed changes and mark it:
-[as canon] if it can still happen as in the original;
-[changed] if its conditions differ because of the changes, and say how;
-[impossible] if the changes have made it impossible, and say why.
-Use web search to check the original's order of events instead of relying on memory.
-Output a plain list in {{language}}, one event per line starting with "- ". No preamble, no closing remarks.` } },
+    world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'count', 'mediumRule', 'language'],
+        locked: '출력의 [PUBLIC] / [HIDDEN] 표식과 "- " 로 시작하는 줄 형식은 지켜야 함 (그대로 읽어서 나눔). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
+        def: { en: `You describe the CURRENT STATE OF THE WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
+This is NOT a list of upcoming events. It is where things stand right now, so that a writer can keep the original world moving in the background while the story's own characters (including the player's original character) may be somewhere else doing other things.
+Use web search to check the original at this point instead of relying on memory.
+The story's confirmed changes (confirmed_changes) override the original: if a story character has joined, left, replaced, saved or killed someone, show the result.
+
+Output exactly two sections with these tags:
+[PUBLIC]
+- One line per major character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now. Present tense. No backstory, no explanation of motives or mechanics, nothing that happens later.
+[HIDDEN]
+- Facts already true now that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 10.
+  Only real secrets: skip mere unknown information (such as not knowing where something is). No motives, mechanics, weaknesses or future plans.
+  Secrets created by the story count only if confirmed_changes state them; never invent new ones.
+Rules: only what is true at this point; nothing that happens later; nothing already revealed by this point or by confirmed_changes. If unsure whether something is already true at this point, leave it out.
+Write the lines in {{language}}; keep the two tags as they are. No preamble, no closing remarks.` } },
+    scenePick: { label: '장면 비밀 고르기', ph: ['limit'],
+        locked: '입력: 번호 붙은 숨은 상태, 지금 장면 끝, 이번 유저 입력. 답은 번호(쉼표로 구분) 또는 NONE',
+        def: { en: `You pick which hidden facts matter for the current scene of a story.
+Given the numbered hidden_states, the end of the current scene and the latest user input, return the numbers of the hidden states whose characters are present in this scene, are about to meet the scene's characters, or are being talked about, so that a slip is possible now. At most {{limit}}. When unsure about one, include it.
+Answer only with the numbers separated by commas (for example "2,5"), or NONE.` } },
     injPos: { label: '위치 블록 문구', ph: ['position'], locked: '맨 앞의 [Canon Position] 표식은 잠김',
         def: { ko: '현재 원작 시점: {{position}}', en: 'Current point in canon: {{position}}' } },
     injGuard: { label: '시점 가드 블록 안내', ph: [], locked: '이 문구 뒤에 시점 가드 목록이 붙음',
@@ -7103,13 +7209,14 @@ Output a plain list in {{language}}, one event per line starting with "- ". No p
     flowDoubt: { label: '전개 블록 경고 (검증 의심)', ph: [], locked: '전개모드의 검증 의심 지침을 켰을 때 위치·가드·가이드 블록 끝에 붙음',
         def: { ko: '※ 위 위치와 목록은 보조 모델이 원작 지식으로 만든 것이라 틀릴 수 있다. 지금까지의 이야기와 어긋나면 이야기를 따를 것.',
                en: '※ The position and lists above were produced by an assistant model from its knowledge of the original and may be wrong. Where they conflict with the story so far, follow the story.' } },
-    jump: { label: '시간 점프 감지', ph: [], locked: '입력: 현재 원작 시점, 직전 장면 끝, 이번 유저 입력. 답에 FORWARD / BACK / NONE 중 하나가 있어야 함',
+    jump: { label: '시간 점프 · 장면 바뀜 감지', ph: [], locked: '입력: 현재 원작 시점, 직전 장면 끝, 이번 유저 입력. 답에 FORWARD / BACK / NONE 중 하나와 SAME / NEW 중 하나가 있어야 함 (NEW가 없으면 장면 바뀜은 감지하지 않음)',
         def: { en: `You read the latest user input of an ongoing story and decide whether it moves the story's time compared with the end of the previous scene.
 FORWARD: the input skips ahead in story time: the next day or later (days, weeks, months, years later, the next season or school year, "after <event>", or an explicit later date).
 BACK: the story itself now continues at an earlier time than before (a flashback scene that is played out, time travel).
 NONE: the scene simply continues, only minutes or hours pass, or another time is only mentioned in dialogue, a plan, a memory or a dream.
-Answer with exactly one word: FORWARD, BACK or NONE.` } },
-    injJump: { label: '위치 블록 안내 (시간 점프)', ph: [], locked: '시간 점프 감지가 앞으로 건너뛴 턴에 위치·시점 가드 블록 끝에 붙음',
+Also decide whether the SCENE changes: NEW if the input moves the story to a different place or to a different group of main characters (and after any time jump); SAME otherwise.
+Answer with exactly two words: the time word (FORWARD, BACK or NONE) and the scene word (SAME or NEW), for example "NONE SAME".` } },
+    injJump: { label: '위치 블록 안내 (시간 점프)', ph: [], locked: '시간 점프 감지가 앞으로 건너뛴 턴에 위치·시점 가드 블록과 세계 상태 블록 끝에 붙음',
         def: { ko: '※ 이번 입력에서 이야기 시간이 앞으로 건너뛰었다. 위 시점과 비밀 목록은 건너뛰기 전 기준이다. 그 사이 원작에서 지나갔을 일을 감안하되, 지금까지의 이야기와 어긋나면 이야기를 따를 것.',
                en: '※ The latest input moves the story forward in time. The point and secrets above describe the moment before this jump. Allow for what the original would have moved past in between, but follow the story so far where they conflict.' } },
     injJumpBack: { label: '위치 블록 안내 (과거 장면)', ph: [], locked: '시간 점프 감지가 과거 장면으로 판단한 턴에 위치·시점 가드 블록 끝에 붙음',
@@ -7118,12 +7225,12 @@ Answer with exactly one word: FORWARD, BACK or NONE.` } },
     injDiv: { label: '분기 블록 안내', ph: [], locked: '맨 앞의 [Canon Divergences] 표식은 잠김. 이 문구 뒤에 분기 목록이 붙음',
         def: { ko: '이 이야기에서 원작과 달라진 확정 사실이다. 원작과 충돌하면 이쪽이 현재 사실이다. 직접 서술하거나 설명하지 말고 일관성을 지키는 데만 쓴다.',
                en: 'Confirmed facts in this story that differ from canon. Where they conflict with canon, these are the current truth. Do not narrate or explain them; use them only to stay consistent.' } },
-    guideRef: { label: '서사 가이드 안내 (참고만)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 가이드가 붙음',
-        def: { ko: '아래는 원작에서 이 시점 이후에 일어나는 일이다. 작가의 참고용이며, 이야기 흐름에 자연스러울 때만 반영한다.\n항목에 표시된 상태(원작대로 / 달라짐 / 불가능)를 따른다. 이것은 작가가 아는 방향일 뿐이며, 인물은 이 사건들을 미리 알지 않는다.',
-               en: "The following is what happens after this point in the original. It is reference for the author; reflect it only where it fits the story naturally.\nFollow the status marked on each item (as canon / changed / impossible). This is the author's knowledge only; characters do not know these events in advance." } },
-    guideSteer: { label: '서사 가이드 안내 (유도)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 가이드가 붙음',
-        def: { ko: '아래는 원작에서 이 시점 이후에 일어나는 일이다. 가능하면 이야기를 이 방향으로 이끌되, 유저 입력과 충돌하면 유저 입력이 우선한다.\n항목에 표시된 상태(원작대로 / 달라짐 / 불가능)를 따른다. 이것은 작가가 아는 방향일 뿐이며, 인물은 이 사건들을 미리 알지 않는다.',
-               en: "The following is what happens after this point in the original. Steer the story toward it where possible, but the user's input takes priority when they conflict.\nFollow the status marked on each item (as canon / changed / impossible). This is the author's knowledge only; characters do not know these events in advance." } },
+    guideRef: { label: '세계 상태 안내 (참고만)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태표의 공개 상태가 붙음',
+        def: { ko: '아래는 이 시점 원작 세계의 상태다. 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. 이 장면에 닿는 길은 그 인물이 실제로 이 자리에 있거나, 소식·소문으로 전해지거나, 이야기의 인물이 그쪽으로 가는 것뿐이다. 원작의 일을 이 장면으로 옮겨 오지 말고, 자연스럽게 닿을 때만 반영한다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: "The following is the state of the original world at this point. It keeps moving in the background as in the original; it is not the next scene of this story. It reaches this scene only if those characters are actually present, if news or rumours carry it here, or if the story's characters go there. Do not move the original's events into this scene; reflect them only where they reach it naturally. Characters know only what they witnessed or were told." } },
+    guideSteer: { label: '세계 상태 안내 (유도)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태표의 공개 상태가 붙음',
+        def: { ko: '아래는 이 시점 원작 세계의 상태다. 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. 원작의 일을 이 장면으로 옮겨 오지 말고, 대신 이야기의 인물들의 길이 이 흐름과 만나도록 이끈다. 유저 입력과 충돌하면 유저 입력이 우선한다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: "The following is the state of the original world at this point. It keeps moving in the background as in the original; it is not the next scene of this story. Do not move the original's events into this scene; instead steer the story's characters so that their path meets this flow. The user's input takes priority when they conflict. Characters know only what they witnessed or were told." } },
     qaRef: { label: 'Q&A 블록 안내 (배경지식만)', ph: [], locked: '참고 지침이 "배경지식만"일 때 Q&A 블록 끝에 붙음',
         def: { ko: '※ 위 내용은 작성자의 배경지식으로만 활용할 것. 절대로 위 내용을 직접 서술하거나, 등장인물이 해당 정보를 설명하듯 말하게 하거나, 나레이션으로 독자에게 알려주는 식으로 쓰지 말 것. 서사의 흐름상 자연스럽게 녹아들 수 있는 부분만 간접적으로 반영하고, 부자연스럽거나 불필요하면 아예 사용하지 말 것.',
                en: "※ Use the above only as the author's background knowledge. Never narrate it directly, have characters explain it as exposition, or tell it to the reader through narration. Reflect only what blends naturally into the flow of the story, indirectly; if it would be unnatural or unnecessary, do not use it at all." } },
@@ -7302,6 +7409,7 @@ async function loreqa_posImport(snap, data, replace) {
         if (!k || !b || typeof b !== 'object') continue;
         const nb = { ...b, label: String(b.label || k).slice(0, 200), qa: Array.isArray(b.qa) ? b.qa.filter(e => e && typeof e === 'object') : [] };
         if (divN !== null && nb.guide) nb.guideDivN = divN;
+        if (divN !== null && nb.world && typeof nb.world === 'object') nb.world = { ...nb.world, divN };
         st.byPos[k] = nb; n++;
     }
     const c = data.cur;
@@ -7352,18 +7460,65 @@ function loreqa_trueDivergences(projection) {
     // 원작대로 일어난 사건은 빼고, 원작과 달라진 일 + 인지·관계·소속 상태만 넘긴다
     return projection || []; // 원작과 같은 사건은 판정 기준에서 이미 거른다. 깨진 원작 사실이 없는 OC 상태 기록도 넘긴다
 }
-async function loreqa_generateGuard(label, divergences) {
-    const lang = scoutLang();
-    const system = loreqa_prompt('guard', { source: loreqa_cfg.source, position: label, language: lang }, false) + await loreqa_flowOcRule();
+// ── 세계 상태표: 서사 가이드와 시점 가드의 재료. 위치(또는 분기 기록)가 바뀔 때 한 번, 웹 검색 ──
+//   [PUBLIC]  지금 원작 세계에서 누가 어디서 무엇을 하는 중인가 → 서사 가이드 블록 (화면 밖에서 굴러가는 배경)
+//   [HIDDEN]  그중 일부 인물만 아는 것 → 장면마다 관련 있는 것만 골라 시점 가드로
+//   원작의 '다음 사건'을 넘기면 메인 모델이 그 사건을 이야기 인물 앞으로 끌어온다. 상태로 넘기면 어디서 벌어지는지가 함께 간다.
+const LOREQA_WORLD_V = 1;
+function loreqa_parseWorld(raw) {
+    const text = String(raw || '').replace(/\r/g, '');
+    const lines = part => part.split('\n').map(l => l.trim()).filter(l => /^[-•*]/.test(l)).map(l => l.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
+    const iP = text.search(/\[PUBLIC\]/i), iH = text.search(/\[HIDDEN\]/i);
+    if (iP < 0 && iH < 0) return { pub: lines(text), hidden: [] };
+    const pubPart = iP >= 0 ? text.slice(iP + 8, iH > iP ? iH : undefined) : '';
+    const hidPart = iH >= 0 ? text.slice(iH + 8, iP > iH ? iP : undefined) : '';
+    return { pub: lines(pubPart), hidden: lines(hidPart) };
+}
+// 보조 모델에 넘기는 분기 기록 (요청 직전 loreqa_prepareTurn 과 같은 계산)
+async function loreqa_helperDivergences(snap) {
+    if (!loreqa_branchOn('compLedger')) return [];
+    try { return loreqa_capTail(loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(await scoutLedgerReadAvailable(snap)))), 'helperDivMax'); }
+    catch (e) { return []; }
+}
+async function loreqa_generateWorld(label, divergences) {
+    const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), med = loreqa_mediumRule();
+    const system = loreqa_prompt('world', { source: loreqa_cfg.source, position: label, count: n, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
     const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
-        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
-        const text = String(typeof out === 'string' ? out : (out?.text ?? out?.content ?? '')).trim();
-        return loreqa_capStr(text, 'guardChars');
+        const t0 = Date.now();
+        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1, step: '세계 상태표' });
+        loreqa_statTime('world', Date.now() - t0); loreqa_statUsage('world', out?.usage);
+        const raw = loreqa_capStr(String(typeof out === 'string' ? out : (out?.text ?? '')).trim(), 'guideChars');
+        const p = loreqa_parseWorld(raw);
+        if (!p.pub.length && !p.hidden.length) { loreqa_stat('world.fail'); return null; }
+        loreqa_stat('world.gen'); loreqa_stat('world.public', p.pub.length); loreqa_stat('world.hidden', p.hidden.length);
+        return { raw, pub: p.pub, hidden: p.hidden, v: LOREQA_WORLD_V, n };
+    } catch (e) { loreqa_stat('world.fail'); console.warn('[LoreQA] 세계 상태표 생성 실패:', e?.message || e); return null; }
+}
+// 시점 가드: 숨은 상태 중 지금 장면에 닿는 것만 고른다 (감지용 API, 검색 없음). 개수가 상한 이하면 묻지 않고 전부.
+async function loreqa_pickSceneSecrets(hidden, snap) {
+    const limit = Math.max(1, Number(loreqa_cfg.sceneSecretMax) || 4);
+    if (hidden.length <= limit) { loreqa_stat('scene.pickSkip'); return hidden.map((_, i) => i); }
+    const lastChar = [...snap.list].reverse().find(m => ['char', 'assistant'].includes(m.role));
+    const lastUser = [...snap.list].reverse().find(m => m.role === 'user');
+    const user = JSON.stringify({ hidden_states: hidden.map((h, i) => ({ n: i + 1, text: h })), current_scene_end: scoutText(lastChar).slice(-1500), latest_user_input: scoutText(lastUser).slice(-2000) });
+    try {
+        const [bt, bp] = loreqa_jumpApi();
+        const t0 = Date.now();
+        const out = await loreqa_callLLM([{ role: 'system', content: loreqa_prompt('scenePick', { limit }, false) }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true, step: '장면 비밀 고르기' });
+        loreqa_statTime('scene.pick', Date.now() - t0); loreqa_statUsage('scene.pick', out?.usage);
+        const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim();
+        if (!raw) throw Error(loreqa_state?.lastError || '빈 응답');
+        loreqa_stat('scene.pick');
+        if (/^\W*NONE\b/i.test(raw)) return [];
+        const picks = [...new Set((raw.match(/\d+/g) || []).map(Number).filter(x => x >= 1 && x <= hidden.length).map(x => x - 1))].slice(0, limit);
+        loreqa_stat('scene.picked', picks.length);
+        return picks;
     } catch (e) {
-        console.warn('[LoreQA] 시점 가드 생성 실패:', e?.message || e);
-        return '';
+        // 실패하면 앞쪽 상한 개수만 (빠뜨리는 것보다 낫다)
+        loreqa_stat('scene.pickFail'); console.warn('[LoreQA] 장면 비밀 고르기 실패:', e?.message || e);
+        return hidden.slice(0, limit).map((_, i) => i);
     }
 }
 // 분기·전개 모드의 보조 호출에 붙일 설정 자료 (prefix: 'branch' | 'flow')
@@ -7378,46 +7533,37 @@ async function loreqa_ctxExtras(prefix) {
 }
 const loreqa_flowOcRule = async () => Number(loreqa_cfg.flowOriginal) === 1 ? scoutOcRule(await loreqa_getPersonaName()) : '';
 
-// ── 서사 가이드: 현재 위치 다음의 원작 사건 n개, 분기 기록과 맞대어 상태 표시 ──
-const LOREQA_GUIDE_V = 1;
-async function loreqa_generateGuide(label, divergences) {
-    const lang = scoutLang(), n = Math.max(1, Math.min(10, Number(loreqa_cfg.guideCount) || 3)), med = loreqa_mediumRule();
-    const system = loreqa_prompt('guide', { source: loreqa_cfg.source, position: label, count: n, mediumRule: med.rule, language: lang }, false) + await loreqa_flowOcRule();
-    const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), ...(await loreqa_ctxExtras('flow')) });
-    try {
-        const [bt, bp] = loreqa_flowApi();
-        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
-        return loreqa_capStr(String(typeof out === 'string' ? out : (out?.text ?? '')).trim(), 'guideChars');
-    } catch (e) { console.warn('[LoreQA] 서사 가이드 생성 실패:', e?.message || e); return ''; }
-}
-
 // 요청 직전: 이번 유저 입력이 이야기 시간을 건너뛰는지 가벼운 모델에 묻는다 (웹 검색 없음). 'forward' | 'back' | ''
 //   같은 입력의 재생성·재시도는 이전 결과를 다시 쓴다.
-let loreqa_jumpCache = { key: '', result: '' };
+let loreqa_jumpCache = { key: '', result: null };
 async function loreqa_detectTimeJump(snap, label) {
     const last = snap.list[snap.list.length - 1];
-    if (last?.role !== 'user') return ''; // 마지막이 유저 입력일 때만 (이어쓰기 등은 판단할 입력이 없음)
+    const none = { time: '', scene: '' };
+    if (last?.role !== 'user') return none; // 마지막이 유저 입력일 때만 (이어쓰기 등은 판단할 입력이 없음)
     const input = scoutText(last).trim();
-    if (!input) return '';
+    if (!input) return none;
     const key = snap.scope + '|' + scoutHash(input);
-    if (loreqa_jumpCache.key === key) return loreqa_jumpCache.result;
+    if (loreqa_jumpCache.key === key && loreqa_jumpCache.result) return loreqa_jumpCache.result;
     const prev = [...snap.list.slice(0, -1)].reverse().find(m => ['char', 'assistant'].includes(m.role));
     const system = loreqa_prompt('jump', {}, false);
     const user = JSON.stringify({ current_point_in_canon: label || 'unknown', previous_scene_end: scoutText(prev).slice(-800), latest_user_input: input.slice(-3000) });
     try {
         const [bt, bp] = loreqa_jumpApi();
         const t0 = Date.now();
-        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true });
+        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], false, bt, bp, false, false, { silent: true, step: '시간 점프 감지' });
         loreqa_statTime('jump', Date.now() - t0); loreqa_statUsage('jump', out?.usage);
         const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim().toUpperCase();
-        if (!raw) { loreqa_stat('jump.fail'); return ''; } // 실패는 캐시하지 않는다
-        const result = /\bFORWARD\b/.test(raw) ? 'forward' : /\bBACK\b/.test(raw) ? 'back' : '';
-        loreqa_stat('jump.' + (result || 'none'));
+        if (!raw) { loreqa_stat('jump.fail'); return none; } // 실패는 캐시하지 않는다
+        const time = /\bFORWARD\b/.test(raw) ? 'forward' : /\bBACK\b/.test(raw) ? 'back' : '';
+        // 장면 바뀜: NEW 또는 시간 점프. SAME/NEW 가 없는 답(예전 프롬프트)은 '모름'
+        const scene = time || /\bNEW\b/.test(raw) ? 'new' : /\bSAME\b/.test(raw) ? 'same' : '';
+        const result = { time, scene };
+        loreqa_stat('jump.' + (time || 'none')); if (scene === 'new') loreqa_stat('scene.change');
         loreqa_jumpCache = { key, result };
         return result;
-    } catch (e) { loreqa_stat('jump.fail'); console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return ''; }
+    } catch (e) { loreqa_stat('jump.fail'); console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return none; }
 }
-// 요청 직전: 위치 신호 읽기 → (위치가 새로우면) 시점 가드 생성 → 분기 기록 읽기
+// 요청 직전: 분기 기록 읽기 → 시간 점프·장면 바뀜 감지 → (위치·분기가 바뀌었으면) 세계 상태표 생성 → 장면 비밀 고르기
 async function loreqa_prepareTurn() {
     // divergences: 보조 모델용 (최신 helperDivMax 개). allDivergences: 메인 후보용 전체 — ★ 우선이 오래된 ★를 잃지 않게
     const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], allDivergences: [], fixed: '', bucket: '_' };
@@ -7437,7 +7583,10 @@ async function loreqa_prepareTurn() {
     //   앞으로 건너뛰었으면 응답 뒤 판정 간격과 상관없이 위치를 다시 판정한다 (jumpWait면 지금 판정하고 기다림).
     if (st.cur && loreqa_flowOn('jumpDetect')) {
         loreqa_stageSet({ pos: '점프 확인 중' });
-        t.jump = await loreqa_detectTimeJump(snap, st.cur.label);
+        const j = await loreqa_detectTimeJump(snap, st.cur.label);
+        t.jump = j.time;
+        // 장면이 바뀌면 시점 가드(장면 비밀)를 다시 고른다
+        if (j.scene === 'new') { st.sceneGen = (st.sceneGen || 0) + 1; await loreqa_posSave(t.scope, st); }
         if (t.jump === 'forward' && st.cur.source !== 'manual') {
             st.jumpPending = 1; await loreqa_posSave(t.scope, st);
             if (Number(cfg.jumpWait) === 1) {
@@ -7445,35 +7594,38 @@ async function loreqa_prepareTurn() {
                 const r = await loreqa_posModelFallback(snap);
                 loreqa_posMsg = r?.status === 'set' ? `✓ 시간 점프 감지 → 위치 다시 판정 (${r.basis}): ${r.label}` : `시간 점프 감지 → 위치 판정: ${r?.note || r?.error || '변화 없음'}`;
                 st = await loreqa_posLoad(t.scope);
-                t.jump = ''; // 위치를 새로 판정했으니 '점프 전 기준' 안내와 가이드 생략은 필요 없다
+                t.jump = ''; // 위치를 새로 판정했으니 '점프 전 기준' 안내는 필요 없다
             }
         }
     }
     if (st.cur) {
         t.pos = st.cur; t.bucket = st.cur.key;
         const bucket = loreqa_posBucket(st, st.cur.key, st.cur.label);
-        if (loreqa_flowOn('compGuard')) {
-            if ((!bucket.secrets || bucket.guardV !== LOREQA_GUARD_V) && cfg.source) {
-                loreqa_stageSet({ pos: '✓', guard: '⏳' });
-                const fresh = await loreqa_generateGuard(st.cur.label, t.divergences);
-                // 생성이 실패하면 기존 목록을 지우지 않고 그대로 쓴다 (다음 요청에서 다시 시도)
-                if (fresh) { bucket.secrets = fresh; bucket.guardV = LOREQA_GUARD_V; dirty = true; }
+        const useGuard = loreqa_flowOn('compGuard'), useWorld = loreqa_flowOn('compGuide');
+        // 세계 상태표: 위치가 새롭거나, 줄 수 설정이 바뀌었거나, 표를 만든 뒤 분기 기록이 바뀌었으면 다시 만든다. 실패하면 기존 표를 그대로 쓴다.
+        if (useGuard || useWorld) {
+            const divN = t.divergences.length, n = Number(cfg.worldCount) || 8, w = bucket.world;
+            if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || (w.divN ?? -1) !== divN) && cfg.source) {
+                loreqa_stageSet({ pos: '✓', guide: '상태표 ⏳' });
+                const fresh = await loreqa_generateWorld(st.cur.label, t.divergences);
+                if (fresh) { bucket.world = { ...fresh, divN }; delete bucket.scene; dirty = true; }
             }
-            t.guard = bucket.secrets || '';
-            loreqa_stageSet({ guard: t.guard ? '✓' : '✗' });
+        }
+        const W = bucket.world;
+        if (useGuard) {
+            // 시점 가드: 숨은 상태 중 이 장면에 닿는 것만. 장면이 바뀌었거나 상태표가 바뀌었으면 다시 고른다.
+            const hidden = W?.hidden || [], gen = st.sceneGen || 0, wsig = W ? scoutHash(W.raw || JSON.stringify(hidden)) : '';
+            if (hidden.length && (!bucket.scene || bucket.scene.gen !== gen || bucket.scene.w !== wsig)) {
+                loreqa_stageSet({ guard: '장면 비밀 ⏳' });
+                bucket.scene = { gen, w: wsig, picks: await loreqa_pickSceneSecrets(hidden, snap) }; dirty = true;
+            }
+            const picks = hidden.length ? (bucket.scene?.picks || []) : [];
+            t.guard = picks.map(i => hidden[i]).filter(Boolean).map(l => '- ' + l).join('\n');
+            loreqa_stageSet({ guard: !W ? '✗' : t.guard ? `✓ ${picks.length}개` : '해당 없음' });
         } else loreqa_stageSet({ guard: '끔' });
-        if (loreqa_flowOn('compGuide') && t.jump) {
-            t.guide = ''; // 건너뛴 턴의 '다음 원작 사건'은 이미 지나갔거나 아직 먼 일이라 넣지 않는다
-            loreqa_stageSet({ guide: '점프로 생략' });
-        } else if (loreqa_flowOn('compGuide')) {
-            const divN = t.divergences.length, n = Number(cfg.guideCount) || 3;
-            // 위치가 새롭거나, 개수가 바뀌었거나, 가이드를 만든 뒤 분기가 새로 기록되었으면 다시 만든다
-            if ((!bucket.guide || bucket.guideV !== LOREQA_GUIDE_V || bucket.guideN !== n || (bucket.guideDivN ?? -1) !== divN) && cfg.source) {
-                loreqa_stageSet({ guide: '⏳' });
-                const g = await loreqa_generateGuide(st.cur.label, t.divergences);
-                if (g) { bucket.guide = g; bucket.guideV = LOREQA_GUIDE_V; bucket.guideN = n; bucket.guideDivN = divN; dirty = true; }
-            }
-            t.guide = bucket.guide || '';
+        if (useWorld) {
+            // 세계 상태 (서사 가이드): 화면 밖에서 굴러가는 원작 세계. 시간 점프 턴에도 빼지 않고 '점프 전 기준' 안내만 붙인다
+            t.guide = (W?.pub || []).map(l => '- ' + l).join('\n');
             loreqa_stageSet({ guide: t.guide ? '✓' : '✗' });
         } else loreqa_stageSet({ guide: '끔' });
         loreqa_stageSet({ pos: '✓' });
@@ -7535,7 +7687,7 @@ ${labelRule} Answer exactly "unknown" only if the chat has nothing to do with th
 
     try {
         const [bt, bp] = loreqa_flowApi();
-        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1 });
+        const out = await loreqa_callLLM([{ role: 'system', content: system }, { role: 'user', content: user }], Number(loreqa_cfg.flowSearch) !== 0, bt, bp, false, false, { silent: true, pdf: Number(loreqa_cfg.flowPdf) === 1, step: '위치 판정' });
         const raw = String(typeof out === 'string' ? out : (out?.text ?? '')).trim();
         loreqa_statTime('pos.judge', Date.now() - posT0); loreqa_statUsage('pos', out?.usage);
         if (!raw) { loreqa_stat('pos.error'); return { status: 'error', error: loreqa_state?.lastError || '보조 모델이 빈 응답을 돌려주었습니다.' }; }
@@ -8346,12 +8498,12 @@ async function scoutRun(force=false) {
         const evidence=scoutEvidence(snap,ledger,extras);
         const ocRule=extras.original?scoutOcRule(extras.personaName):'';
         const prompt=[{role:'system',content:scoutRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY},{role:'user',content:JSON.stringify(evidence)}];
-        const result=await loreqa_callLLM(prompt,!!loreqa_cfg.search,null,null,false,false,{silent:true});
+        const result=await loreqa_callLLM(prompt,!!loreqa_cfg.search,null,null,false,false,{silent:true,step:'원작 브리핑'});
         if(!result?.text)throw new Error(loreqa_state.lastError||'사전 정보 조회에 실패했습니다.');
         let report=result.text;
         if(loreqa_cfg.lore>=2&&!(loreqa_pipelineMode()===2&&Number(loreqa_cfg.scoutSkipAuditInBoth)===1)){
           const verify=loreqa_getVerifyProfile();
-          const checked=await loreqa_callLLM([{role:'system',content:scoutRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY+' Audit the draft against evidence: do not restore canon deaths after successful rescues, erase childhood relations, or turn forecasts into facts. Return the corrected five-section briefing only.'},{role:'user',content:JSON.stringify({evidence,draft:report})}],!!loreqa_cfg.verifySearch,verify.type,verify.profile,false,false,{silent:true});
+          const checked=await loreqa_callLLM([{role:'system',content:scoutRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY+' Audit the draft against evidence: do not restore canon deaths after successful rescues, erase childhood relations, or turn forecasts into facts. Return the corrected five-section briefing only.'},{role:'user',content:JSON.stringify({evidence,draft:report})}],!!loreqa_cfg.verifySearch,verify.type,verify.profile,false,false,{silent:true,step:'원작 브리핑 검토'});
           report=checked?.text||report+'\n\n※ 2차 검토 실패: 1차 결과입니다.';
         }
         if((await scoutSnapshot()).key!==snap.key){scoutShow('조회 중 채팅 또는 설정이 바뀌어 결과를 폐기했습니다. 다시 조회해 주세요.');return;}
@@ -8484,7 +8636,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     const system=loreqa_prompt('tidy',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_TIDY_LOCKED;
     const [bt,bp]=loreqa_branchApi();
     const started=Date.now();
-    const response=await loreqa_callLLM([{role:'system',content:system},{role:'user',content:JSON.stringify({work:loreqa_cfg.source,current_point:position||'unknown',records,recent_story_messages:scoutTidyRecent(recentMessages)})}],false,bt,bp,false,false,{ledgerJson:true,outputBudget:16384,silent:true,pdf:Number(loreqa_cfg.branchPdf)===1});
+    const response=await loreqa_callLLM([{role:'system',content:system},{role:'user',content:JSON.stringify({work:loreqa_cfg.source,current_point:position||'unknown',records,recent_story_messages:scoutTidyRecent(recentMessages)})}],false,bt,bp,false,false,{ledgerJson:true,outputBudget:16384,silent:true,pdf:Number(loreqa_cfg.branchPdf)===1,step:'장부 정리'});
     const entry={time:new Date().toISOString(),phase:'tidy',reason,records:records.length,elapsedMs:Date.now()-started,...(response?.diagnostic||{}),usage:response?.usage||null,response:scoutLedgerLogText(response?.text||''),status:'응답 수신'};
     scoutLedgerLogAdd(scope,entry);
     if(!response?.text){entry.status='API 요청 실패';throw Error('장부 정리 요청 실패: '+(loreqa_state.lastError||'빈 응답'));}
@@ -9038,7 +9190,7 @@ async function loreqa_mainRequest(messages, type) {
         } else {
             // charMode 그대로 전달 (1=인물, 0=사건, 3=지침없음). 병렬모드(2) 는 위 if 분기에서 별도 처리.
             const firstPrompt = loreqa_augmentFirstPrompt(loreqa_buildFirstPrompt(firstChatSource, source, personaName, maxLogs, language, searchLevel, personaDesc, charMode, isOriginal, cfg.charQuote === 1, cfg.charSituational === 1, cfg.limitLength === 1, cfg.limitLengthValue, authorNoteText, cfg.charPredictScene === 1), loreCtx);
-            const firstResult = await loreqa_callLLM(firstPrompt, enableSearch, null, null, mcpEnabled, isMcpOnly);
+            const firstResult = await loreqa_callLLM(firstPrompt, enableSearch, null, null, mcpEnabled, isMcpOnly, { step: ({ char: '인물', set: '세계관' }[loreqa_activeMode] || '원작') + ' Q&A 1차' });
             firstRaw = firstResult ? firstResult.text : null;
             firstUsage = firstResult ? firstResult.usage : null;
             loreqa_modeRaw = charMode === 1 ? { ...loreqa_modeRaw, char: firstRaw || '' } : { ...loreqa_modeRaw, set: firstRaw || '' };
@@ -9107,7 +9259,7 @@ async function loreqa_mainRequest(messages, type) {
         console.log('[LoreQA] 2차 요청: 팩트체크 중...');
         const verifyPrompt = loreqa_augmentVerifyPrompt(loreqa_buildVerifyPrompt(source, loreqa_state.firstQ, loreqa_state.firstA, language, personaName, isOriginal, verifySearchLevel), loreCtx);
         const verify = loreqa_getVerifyProfile();
-        const verifyResult = await loreqa_callLLM(verifyPrompt, enableVerifySearch, verify.type, verify.profile, verifyMcpEnabled);
+        const verifyResult = await loreqa_callLLM(verifyPrompt, enableVerifySearch, verify.type, verify.profile, verifyMcpEnabled, false, { step: ({ char: '인물', set: '세계관' }[loreqa_activeMode] || '원작') + ' Q&A 2차' });
         const verifyRaw = verifyResult ? verifyResult.text : null;
         const verifyUsage = verifyResult ? verifyResult.usage : null;
 
@@ -9275,7 +9427,7 @@ function loreqa_injectUnified(messages, t) {
     }
     if (t.guide) {
         const lead = loreqa_prompt(Number(loreqa_cfg.guideStrength) === 1 ? 'guideSteer' : 'guideRef', {}, ko);
-        const c = LOREQA_GUIDE_BLOCK + '\n' + lead + '\n' + t.guide + (Number(loreqa_cfg.flowDoubt) === 1 ? '\n\n' + loreqa_prompt('flowDoubt', {}, ko) : '');
+        const c = LOREQA_GUIDE_BLOCK + '\n' + lead + '\n' + t.guide + (t.jump ? '\n\n' + loreqa_prompt(t.jump === 'back' ? 'injJumpBack' : 'injJump', {}, ko) : '') + (Number(loreqa_cfg.flowDoubt) === 1 ? '\n\n' + loreqa_prompt('flowDoubt', {}, ko) : '');
         loreqa_insertSystemSafely(messages, c, '서사 가이드 주입');
         inj.guide = c;
     }
@@ -9447,14 +9599,12 @@ function loreqa_buildFlowContent(left,right){
     // 자주 만지는 것 → 시간 점프 → 모델·검색 → 캐릭터 & 보정 → 접힌 세부(숫자·상한) 순서
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
-    loreqa_trkToggle(secSet,'compGuard','시점 가드','그 시점에 이미 존재하는 비밀과 모르는 인물을 주입');
+    loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀 중 지금 장면에 닿는 것만 골라 "모르는 인물은 알거나 암시하면 안 됨"으로 주입. 비밀은 세계 상태표에서 고르고, 장면이 바뀌면 다시 고름');
     // 서사 가이드: 끔 / 참고만 / 유도 (내부 값 compGuide·guideStrength 로 나눠 저장)
     const guideNow=Number(loreqa_cfg.compGuide)===1?(Number(loreqa_cfg.guideStrength)===1?2:1):0;
-    secSet.appendChild(loreqa_createRow('서사 가이드',loreqa_createSelect('canon-trk-guideMode',[{value:0,label:'끔'},{value:1,label:'참고만'},{value:2,label:'유도'}],guideNow,async v=>{
-        const g=parseInt(v);loreqa_cfg.compGuide=g>0?1:0;loreqa_cfg.guideStrength=g===2?1:0;guideCountRow.style.display=g>0?'':'none';await loreqa_saveConfig();
-    }),'다음 원작 사건을 분기 상태와 함께 안내. 참고만: 자연스러울 때만 반영 / 유도: 그 방향으로 이끌되 유저 입력 우선'));
-    loreqa_trkNum(secSet,'가이드 사건 수','guideCount',3,1,'현재 위치 다음의 원작 사건 몇 개까지 (최대 10)');
-    const guideCountRow=secSet.lastElementChild;guideCountRow.style.display=guideNow>0?'':'none';
+    secSet.appendChild(loreqa_createRow('서사 가이드 (세계 상태)',loreqa_createSelect('canon-trk-guideMode',[{value:0,label:'끔'},{value:1,label:'참고만'},{value:2,label:'유도'}],guideNow,async v=>{
+        const g=parseInt(v);loreqa_cfg.compGuide=g>0?1:0;loreqa_cfg.guideStrength=g===2?1:0;await loreqa_saveConfig();
+    }),'이 시점 원작 세계의 상태(누가 어디서 무엇을 하는 중인가)를 분기 기록을 반영해 안내. 화면 밖에서 원작대로 굴러가는 배경으로 넣고, 원작 사건을 이야기 인물 앞으로 끌어오지 않게 함. 참고만: 장면에 닿을 때만 반영 / 유도: 이야기 인물의 길이 그 흐름과 만나도록 이끌되 유저 입력 우선'));
     secSet.appendChild(loreqa_createRow('원작 매체',loreqa_createSelect('canon-trk-medium',Object.entries(LOREQA_MEDIA).map(([value,m])=>({value,label:m.label})),loreqa_cfg.canonMedium||'auto',async v=>{loreqa_cfg.canonMedium=v;await loreqa_saveConfig();}),'위치를 어느 매체의 번호로 셀지. 원작 만화와 애니처럼 번호가 다를 때 중요'));
     const secJump=scoutSection('시간 점프');
     loreqa_trkToggle(secJump,'jumpDetect','시간 점프 감지','요청 직전에 가벼운 모델이 이번 유저 입력이 이야기 시간을 건너뛰는지 판단 (웹 검색 없음, 매 턴 짧은 호출 1회). 건너뛰면 이번 턴은 서사 가이드를 빼고 위치 블록에 "점프 전 기준" 안내를 붙이며, 응답 뒤 판정 간격과 상관없이 위치를 다시 판정');
@@ -9474,14 +9624,19 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
     loreqa_trkNum(secMore,'판정 참조 턴 수','posReadMsgs',3,1,'위치 판정 때 읽을 최근 턴 수 (유저 입력 + 응답 = 1턴)');
     loreqa_trkNum(secMore,'판정 참조 글자 수','posReadChars',8000,0,'읽은 메시지 중 뒤에서부터 이만큼만 보냄. 0이면 제한 없음');
-    loreqa_trkNum(secMore,'시점 가드 글자 수','guardChars',6000,0,'시점 가드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
-    loreqa_trkNum(secMore,'서사 가이드 글자 수','guideChars',6000,0,'서사 가이드 결과를 이만큼까지 저장·주입. 0이면 제한 없음');
+    loreqa_trkNum(secMore,'세계 상태 인물·세력 수','worldCount',8,1,'세계 상태표 [PUBLIC] 에 적을 주요 인물·세력 수 (최대 20). 바꾸면 다음 요청 때 표를 다시 만듦');
+    loreqa_trkNum(secMore,'장면 비밀 수','sceneSecretMax',4,1,'시점 가드: 숨은 상태 중 지금 장면에 닿는 것을 최대 몇 개까지 넣을지. 숨은 상태가 이보다 적으면 고르지 않고 전부 넣음');
+    loreqa_trkNum(secMore,'세계 상태표 글자 수','guideChars',6000,0,'세계 상태표 생성 결과를 이만큼까지 저장. 0이면 제한 없음');
     loreqa_trkNum(secMore,'메모 질문 글자 수','qaMemoQChars',300,0,'위치별 원작 메모에 저장하는 질문 길이. 0이면 제한 없음');
     loreqa_trkNum(secMore,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
     loreqa_trkNum(secMore,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
     loreqa_trkNum(secMore,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
     loreqa_trkNum(secMore,'첨부 글자 수','attachChars',4000,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음');
     right.append(secSet,secJump,secModel,charSec,secMore);
+    // 세계 상태표 개편(3.2.17) 전에 직접 고친 프롬프트는 새 방식과 안 맞을 수 있다. 고친 것은 그대로 두고 알리기만 한다
+    {const old={jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면 비밀을 다시 고르지 않음)',guideRef:'세계 상태 안내 (참고만)',guideSteer:'세계 상태 안내 (유도)',injJump:'위치 블록 안내 (시간 점프)'};
+     const mine=Object.keys(old).filter(k=>loreqa_promptCustom(k));
+     if(mine.length){const w=scoutSection('직접 고친 프롬프트 확인');w.appendChild(loreqa_el('div','loreqa-muted','서사 가이드가 "다음 원작 사건"에서 "세계 상태"로 바뀌었습니다. 아래 프롬프트는 직접 고친 것을 계속 쓰고 있어 새 방식과 안 맞을 수 있습니다. 아래 프롬프트 편집에서 "기본값으로"를 누르면 새 기본값을 씁니다.\n'+mine.map(k=>'· '+old[k]).join('\n')));w.lastChild.style.whiteSpace='pre-wrap';right.insertBefore(w,secSet);}}
 
     const briefSec=scoutSection('원작 브리핑 (참고용 · 주입 안 됨)');
     const briefBtns=document.createElement('div');briefBtns.className='loreqa-lore-buttons';
@@ -9642,6 +9797,7 @@ async function loreqa_registerHotkey() {
 if (globalThis.__pluginApis__ && globalThis.__pluginApis__.onUnload) {
     globalThis.__pluginApis__.onUnload(() => {
         loreqa_disablePassthrough();
+        loreqa_floatRemove();
         if (loreqa_dragCleanup) loreqa_dragCleanup();
         if (loreqa_hotkeyRootCleanup) loreqa_hotkeyRootCleanup();
         if (scoutDragCleanup) scoutDragCleanup();
@@ -9790,7 +9946,7 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
         const started = Date.now();
         const [bt, bp] = loreqa_branchApi();
         const pdfOn = Number(loreqa_cfg.branchPdf) === 1;
-        const response = await loreqa_callLLM(prompt, false, bt, bp, false, false, {ledgerJson:true,outputBudget,silent:true,pdf:pdfOn});
+        const response = await loreqa_callLLM(prompt, false, bt, bp, false, false, {ledgerJson:true,outputBudget,silent:true,pdf:pdfOn,step:payload.coverage_audit?'분기 2차 검토':'분기 추출'});
         { const ph = payload.coverage_audit ? 'ledger.audit' : 'ledger.extract'; loreqa_stat(ph + '.req'); loreqa_statTime(ph, Date.now() - started); loreqa_statUsage(ph, response?.usage); if (attempt) loreqa_stat(ph + '.retry'); }
         const entry = {time:new Date().toISOString(), from:start, to:batch.at(-1)?.index, attempt:attempt+1, phase:payload.coverage_audit?'coverage_audit':'extract', elapsedMs:Date.now()-started, pdf:pdfOn, ...(response?.diagnostic || {}), usage:response?.usage || null, response:scoutLedgerLogText(response?.text || ''), status:'응답 수신'};
         scoutLedgerLogAdd(payload.scope, entry);
