@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.33
+//@version 3.2.34
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7662,6 +7662,7 @@ const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given abov
 - One line: the last event of the original that has ALREADY happened at this point, then "| next:" and the first event that has NOT happened yet. Everything below must agree with this cut: before it is current state or secret, after it is a beat.
 [BEATS] (REQUIRED: always write this section; it is the ONLY place for events after the cut)
 - The next major events of the ORIGINAL after the cut, in order, at most {{beats}}. Format:
+  The first beat is the "next:" event of [NOW].
   "<what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / then: <how it ends in the original, one short clause>"
   Keep the outcome only in "then:"; the first part says how the event starts, not how it ends.
   "present" names people, not conditions: the ones who have to be physically there.
@@ -7670,11 +7671,13 @@ const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given abov
   If the original has no further events after the cut, write the single line "- none".
 [PUBLIC]
 - One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now, as of the cut. Present tense. No backstory, no explanation of motives or mechanics, nothing after the cut.
-  Say each fact once in the whole table: do not repeat here what [NOW] or a beat already says. A character whose only current activity is the [NOW] event or a beat gets no line here.
+  Do not repeat in this section what [NOW] or a beat already says. A character whose only current activity is the [NOW] event or a beat gets no line here.
   Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Do not list them as members of a group even if confirmed_changes say they joined it. Mention them only where confirmed_changes give an original character or faction a lasting new state such as a death, a defection or a new ruler; joining, leaving or travelling with a group never counts.
 [HIDDEN]
-- Concrete facts true at the cut that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 8; fewer is fine.
+- Concrete facts true at the cut that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 8. Fewer is fine and none is fine: leave the section empty rather than fill it with weak lines.
+  A plan already set in motion at the cut that its targets do not know (who has been sent against them, a trap already laid) is a proper line here, even though [NOW] mentions the event.
   Not hidden facts: anything [BEATS] above places after the cut (a plan whose next step is a beat is not yet done: say only what is already set up), anything the original develops only later, mere news someone has not heard yet, unknown places, and vague items such as "does not know the whole story of X" or "does not fully understand Y".
+  Check when each fact becomes true in the original: if it only happens after the cut (someone regains memories, changes sides or learns a truth later on), it is not a line here.
   News is not a secret: someone elsewhere not having heard that a fight was won, a technique learned or a place reached is never a line here.
   "known to" names only characters the original shows learning the fact by the cut, or confirmed_changes say know it. Never guess who could have found out (by spying, by being nearby); leave out a name you are not sure of, and drop the line if no one is sure.
   No motives, mechanics, weaknesses or future plans. Secrets created by the story count only if confirmed_changes state them; never invent new ones.
