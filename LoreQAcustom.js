@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.24
+//@version 3.2.25
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -6655,18 +6655,27 @@ async function loreqa_getPersonaName() {
     return '{{user}}';
 }
 
+// 페르소나 읽기 결과 (확인 단추·진단 로그용). 실패해도 조용히 빈 값이 되던 것을 이유와 함께 남긴다.
+//   Risu 는 플러그인 DB 접근에 사용자 허락이 필요하고(없으면 null), 본체가 쓰는 personaPrompt 칸은 플러그인에 열려 있지 않아
+//   페르소나 목록(personas)에서 선택 번호로 찾는다. 채팅에 묶인 페르소나를 쓰면 다른 내용일 수 있다.
+let loreqa_personaLast = { ok: false, reason: '아직 읽지 않음' };
 async function loreqa_getPersonaDescription() {
     try {
-        const db = await risuai.getDatabase();
-        if (db) {
-            // 페르소나 배열에서 선택된 페르소나 프롬프트
-            const persona = db.personas?.[db.selectedPersona || 0];
-            if (persona?.personaPrompt) return persona.personaPrompt;
-            // fallback
-            if (db.personaPrompt) return db.personaPrompt;
-        }
-    } catch (e) {}
+        const db = await risuai.getDatabase(['personas', 'selectedPersona']);
+        if (!db) { loreqa_personaLast = { ok: false, reason: 'Risu DB 접근 권한이 없음 (플러그인 권한 허락 필요)' }; return ''; }
+        const idx = Number(db.selectedPersona) || 0, persona = db.personas?.[idx];
+        const text = persona?.personaPrompt || db.personaPrompt || '';
+        loreqa_personaLast = text ? { ok: true, name: persona?.name || '', index: idx, len: text.length, head: text.slice(0, 160) }
+            : { ok: false, reason: persona ? `선택된 페르소나(${persona.name || (idx + 1) + '번'})의 설명이 비어 있음` : '선택된 페르소나를 찾지 못함' };
+        return text;
+    } catch (e) { loreqa_personaLast = { ok: false, reason: '읽기 실패: ' + (e?.message || e) }; }
     return '';
+}
+// 확인 단추: 지금 읽히는 페르소나를 보여 준다 (이름 · 글자 수 · 앞부분 · 첨부 상한에서 잘리는지)
+async function loreqa_personaCheckText() {
+    const name = await loreqa_getPersonaName(), text = await loreqa_getPersonaDescription(), p = loreqa_personaLast, cap = loreqa_lim('attachChars');
+    if (!p.ok) return '✗ 페르소나를 읽지 못했습니다: ' + p.reason;
+    return `✓ 읽힘: ${p.name || name} · ${p.len.toLocaleString()}자${cap && p.len > cap ? ` (첨부 글자 수 ${cap.toLocaleString()}자에서 잘림 — 뒷부분은 보조 모델에 안 감)` : ''}\n앞부분: ${p.head}${text.length > 160 ? '…' : ''}\n※ 채팅마다 다른 페르소나를 묶어 쓰면 여기 보이는 것과 실제 대화의 페르소나가 다를 수 있습니다.`;
 }
 
 // RisuAI 작가의 노트 조회
@@ -9772,6 +9781,9 @@ function loreqa_trkApiRows(sec,apiKey,modelKey,sub,blankLabel){
     let t=null;m.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(async()=>{loreqa_cfg[modelKey]=m.value.trim();await loreqa_saveConfig();},300);});
     sec.appendChild(loreqa_createRow('모델 이름',m,'비우면 프로필의 모델'));
 }
+// 페르소나 확인 단추 + 결과 줄
+function loreqa_personaCheckRow(sec){const out=loreqa_el('div','loreqa-muted');out.style.cssText='white-space:pre-wrap;font-size:12px;margin:2px 0 6px';
+    sec.appendChild(loreqa_createRow('페르소나 확인',loreqa_btn('지금 읽히는 페르소나 보기',async()=>{out.textContent='읽는 중…';out.textContent=await loreqa_personaCheckText();}),'보조 모델에 실제로 붙는 페르소나가 무엇인지 확인'));sec.appendChild(out);}
 function loreqa_trkNum(sec,label,key,def,min,sub){const n=document.createElement('input');n.className='loreqa-input';n.type='number';n.min=String(min);n.value=Number(loreqa_cfg[key]??def);
     n.addEventListener('change',async()=>{loreqa_cfg[key]=Math.max(min,parseInt(n.value)||0);n.value=loreqa_cfg[key];await loreqa_saveConfig();});
     sec.appendChild(loreqa_createRow(label,n,sub));}
@@ -9803,6 +9815,7 @@ function loreqa_buildBranchContent(left,right){
     const secModel=scoutSection('모델 · 첨부');
     loreqa_trkApiRows(secModel,'branchApi','branchModel','분기 추출에 쓸 API.');
     loreqa_trkToggle(secModel,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀');
+    loreqa_personaCheckRow(secModel);
     loreqa_trkToggle(secModel,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
     loreqa_trkToggle(secModel,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
     right.appendChild(secModel);
@@ -9866,6 +9879,7 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkToggle(charSec,'flowOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC');
     loreqa_trkToggle(charSec,'flowDoubt','검증 의심 지침','위치·가드·가이드 블록에 "틀릴 수 있음" 경고');
     loreqa_trkToggle(charSec,'flowPersona','페르소나 포함','위치 판정·가드·가이드에 페르소나 첨부');
+    loreqa_personaCheckRow(charSec);
     loreqa_trkToggle(charSec,'flowAuthorNote','작가의 노트 주입','위치 판정·가드·가이드에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)');
     const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
     loreqa_trkNum(secMore,'판정 간격','posModelEvery',8,1,'극중 날짜가 없을 때 다시 판정하는 응답 수. 날짜가 있으면 날짜가 바뀔 때마다 판정');
@@ -10199,7 +10213,7 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
         { const ph = payload.coverage_audit ? 'ledger.audit' : 'ledger.extract'; loreqa_stat(ph + '.req'); loreqa_statTime(ph, Date.now() - started); loreqa_statUsage(ph, response?.usage); if (attempt) loreqa_stat(ph + '.retry'); }
         const entry = {time:new Date().toISOString(), from:start, to:batch.at(-1)?.index, attempt:attempt+1, phase:payload.coverage_audit?'coverage_audit':'extract', elapsedMs:Date.now()-started, pdf:pdfOn, ...(response?.diagnostic || {}), usage:response?.usage || null, response:scoutLedgerLogText(response?.text || ''), status:'응답 수신'};
         // 무엇이 함께 들어갔는지: 페르소나·작가의 노트 글자 수와 첨부 글자 수 상한에서 잘렸을 가능성
-        { const cap=loreqa_lim('attachChars'), pl=String(payload.player_persona||'').length, al=String(payload.author_note||'').length; entry.attached={persona:pl,authorNote:al,cap:cap||null,mayBeCut:!!cap&&(pl>=cap||al>=cap)}; }
+        { const cap=loreqa_lim('attachChars'), pl=String(payload.player_persona||'').length, al=String(payload.author_note||'').length; entry.attached={persona:pl,authorNote:al,cap:cap||null,mayBeCut:!!cap&&(pl>=cap||al>=cap),...(Number(loreqa_cfg.branchPersona)===1&&!pl?{personaMissing:loreqa_personaLast.reason}:{})}; }
         scoutLedgerLogAdd(payload.scope, entry);
         if (!response?.text) {
             entry.status='API 요청 실패'; entry.error=scoutLedgerLogText(loreqa_state.lastError || '빈 응답');

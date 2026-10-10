@@ -105,7 +105,9 @@ comments are Korean.
   The locked part also has NOTHING BEYOND THE EVIDENCE: details (which parent a sibling shares,
   titles, dates, places, reasons) must be in the quotes or player_persona; "write in detail" made the
   model invent 異父兄 from "そなたの兄". Each extraction log entry has `attached` (persona /
-  author-note chars, cut by attachChars?).
+  author-note chars, cut by attachChars?). Persona comes from `getDatabase(['personas','selectedPersona'])`
+  (needs the user's DB permission; Risu's own `personaPrompt` key is not exposed to plugins, chat-bound
+  personas may differ); `loreqa_personaLast` keeps why it failed, "페르소나 확인" shows it.
   OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
   that is long-term memory's job, not the divergence ledger's.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
