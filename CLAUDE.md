@@ -120,6 +120,10 @@ comments are Korean.
   resulting change in feelings is; the extractor compares the ledger's relationship record with new messages and
   updates it when the relationship has moved on (2-turn batches never saw slow arcs: ledger-04 had 21 records,
   all first meetings / joins / the sword, none about feelings, and Inuyasha was still "confronting" her).
+  INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
+  original Lily Potter has one child, Harry"); only "she doesn't exist / they never met" is banned. The old wording
+  ("if no specific fact is broken, use ''") left every relationship record empty. Examples stay Harry Potter, never
+  the owner's work, or the model copies them into the ledger without evidence.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full
   latest-state list, not the `helperDivMax`-capped `t.divergences`) per `branchMainTier`:
   0 off / 1 core only / 2 all / 3 (default) core first, then the rest newest-first, all within
