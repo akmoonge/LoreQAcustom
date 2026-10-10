@@ -120,6 +120,9 @@ comments are Korean.
   resulting change in feelings is; the extractor compares the ledger's relationship record with new messages and
   updates it when the relationship has moved on (2-turn batches never saw slow arcs: ledger-04 had 21 records,
   all first meetings / joins / the sword, none about feelings, and Inuyasha was still "confronting" her).
+  Travelling with a canon group is one custody record on the OC (relationship records went stale saying "travels
+  with them" after she left); knowledge records hold no feelings; in-progress states (a sword being forged) are
+  updated when finished.
   INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
   original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
   wording ("if no specific fact is broken, use ''") left every relationship record empty. Then every record repeated the same
