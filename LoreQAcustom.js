@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.47
+//@version 3.2.48
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -6656,6 +6656,12 @@ async function loreqa_getChatMessages() {
 }
 
 async function loreqa_getPersonaName() {
+    // 설명 읽기와 같은 키만 먼저 요청한다 (DB 전체 요청은 막혀 있을 수 있어 이름이 '{{user}}' 그대로 넘어가던 문제)
+    try {
+        const db = await risuai.getDatabase(['personas', 'selectedPersona']);
+        const persona = db?.personas?.[Number(db.selectedPersona) || 0];
+        if (persona?.name) return persona.name;
+    } catch (e) {}
     try {
         const db = await risuai.getDatabase();
         if (db) {
