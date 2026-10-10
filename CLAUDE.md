@@ -102,6 +102,10 @@ comments are Korean.
   message that ends / reverses a state already in the ledger must update that same entity +
   dimension, overriding the gate (joining a group passed as "side or group" but leaving was
   filtered as "travel", leaving a false record). `SCOUT_TIDY_LOCKED` has the same rule for tidy.
+  The locked part also has NOTHING BEYOND THE EVIDENCE: details (which parent a sibling shares,
+  titles, dates, places, reasons) must be in the quotes or player_persona; "write in detail" made the
+  model invent 異父兄 from "そなたの兄". Each extraction log entry has `attached` (persona /
+  author-note chars, cut by attachChars?).
   OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
   that is long-term memory's job, not the divergence ledger's.
 - Tiers: `core:true` (★). Main model gets `loreqa_mainDivergences(t.allDivergences)` (the full

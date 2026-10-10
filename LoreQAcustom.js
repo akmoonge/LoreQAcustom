@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.22
+//@version 3.2.23
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8474,7 +8474,8 @@ For (a), "invalidates" MUST state the original's version that no longer holds. F
 }
 // 기존 기록 바로잡기: 관문(A/B/C)과 '기록하지 않음' 목록보다 먼저. 합류는 소속 변화로 남는데 헤어짐은 '여행'으로 걸러져
 //   이미 끝난 상태가 계속 참으로 남던 문제 (예: 小夜 · 犬夜叉一行との関係 = 동행). 잠긴 부분에 넣어 고친 프롬프트에도 적용된다.
-const SCOUT_LEDGER_KEEP_TRUE=`KEEPING THE LEDGER TRUE (this overrides the DIVERGENCE GATE and the "Do NOT record" list): "ledger" is passed to other models as current fact, so a record that is no longer true does more harm than a missing one. For every record in "ledger", check whether a new message ends, reverses or changes that state: someone leaves, rejoins or parts from a group, is released or captured, recovers, reconciles, changes sides, moves out, or a relationship or arrangement ends. If so, emit an event with the SAME entity and the SAME dimension whose "after" is the state as it is now (for example "allied with Inuyasha's group, but now travelling alone, apart from them"), even if the new state alone would not pass the gate. When one change makes several records untrue (A parts from B: A's record and B's record), update each of them. In "review", name any ledger record a new message makes untrue. Do not use this rule to add facts that are not already in the ledger.`;
+const SCOUT_LEDGER_KEEP_TRUE=`KEEPING THE LEDGER TRUE (this overrides the DIVERGENCE GATE and the "Do NOT record" list): "ledger" is passed to other models as current fact, so a record that is no longer true does more harm than a missing one. For every record in "ledger", check whether a new message ends, reverses or changes that state: someone leaves, rejoins or parts from a group, is released or captured, recovers, reconciles, changes sides, moves out, or a relationship or arrangement ends. If so, emit an event with the SAME entity and the SAME dimension whose "after" is the state as it is now (for example "allied with Inuyasha's group, but now travelling alone, apart from them"), even if the new state alone would not pass the gate. When one change makes several records untrue (A parts from B: A's record and B's record), update each of them. In "review", name any ledger record a new message makes untrue. Do not use this rule to add facts that are not already in the ledger.
+NOTHING BEYOND THE EVIDENCE: every specific detail in a record (a family relation and which parent it goes through, half- or step-, a title, a date, a number, a place, a name, a reason) must be stated in the evidence quotes or in the player settings (player_persona). "Write each record in detail" means include everything the evidence says, never fill gaps. If a quote only says "your brother", write "brother", not 異母兄 or 異父兄; if player_persona states the relation, use that. Never guess from the original work what the story has not said.`;
 function scoutLedgerExtractRule(){
     const lang=scoutLang();
     const oc=scoutOpt('original')?scoutOcRule('')+' The player OC is not a canon character: a change the OC causes is recorded only for what it changes in the original story (canon characters, canon events, canon plot), never for the OC\'s own facts or who knows them.':'';
@@ -8846,7 +8847,8 @@ function scoutLedgerSplitEnd(messages,start,end) {
 // ── 분기 장부 정리: 중복 합치기 · 낡은 기록 지우기 · ★ 재판정. 결과에 안 나온 기록은 그대로 둔다. ──
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
 const scoutLedgerAbort=new Set(); // 읽기 중지 요청
-const SCOUT_TIDY_LOCKED=`A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" were written by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
+const SCOUT_TIDY_LOCKED=`Keep family relations, lineage and identities consistent across records. Where records disagree on such a detail (for example one says 異母兄 and another 異父兄), keep only what their source_messages evidence actually supports, otherwise the less specific term; never add a detail no record supports.
+A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" were written by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nEach record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
@@ -10191,6 +10193,8 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
         const response = await loreqa_callLLM(prompt, false, bt, bp, false, false, {ledgerJson:true,outputBudget,silent:true,pdf:pdfOn,step:payload.coverage_audit?'분기 2차 검토':'분기 추출'});
         { const ph = payload.coverage_audit ? 'ledger.audit' : 'ledger.extract'; loreqa_stat(ph + '.req'); loreqa_statTime(ph, Date.now() - started); loreqa_statUsage(ph, response?.usage); if (attempt) loreqa_stat(ph + '.retry'); }
         const entry = {time:new Date().toISOString(), from:start, to:batch.at(-1)?.index, attempt:attempt+1, phase:payload.coverage_audit?'coverage_audit':'extract', elapsedMs:Date.now()-started, pdf:pdfOn, ...(response?.diagnostic || {}), usage:response?.usage || null, response:scoutLedgerLogText(response?.text || ''), status:'응답 수신'};
+        // 무엇이 함께 들어갔는지: 페르소나·작가의 노트 글자 수와 첨부 글자 수 상한에서 잘렸을 가능성
+        { const cap=loreqa_lim('attachChars'), pl=String(payload.player_persona||'').length, al=String(payload.author_note||'').length; entry.attached={persona:pl,authorNote:al,cap:cap||null,mayBeCut:!!cap&&(pl>=cap||al>=cap)}; }
         scoutLedgerLogAdd(payload.scope, entry);
         if (!response?.text) {
             entry.status='API 요청 실패'; entry.error=scoutLedgerLogText(loreqa_state.lastError || '빈 응답');
