@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.52
+//@version 3.2.53
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -14,6 +14,7 @@ if (typeof risuai === "undefined") {
 
 const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
+    pdfFontPx: 20, // PDF 전송 글자 크기(px). 키우면 그림에서 읽는 인용이 정확해지지만 페이지(=이미지 토큰)가 늘어남
     active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
     floatOn: 1,        // 진행 상황 창 (보조 호출마다 단계 · 시간 · 토큰)
     uiScale: 115,      // 설정창 글자 크기 (%)
@@ -1706,6 +1707,8 @@ async function loreqa_openSettingsWindow() {
     { const t = loreqa_el('div', 'loreqa-label', '페르소나 · 작가의 노트 (모든 모드 공통)'); t.style.marginTop = '12px'; secBasic.appendChild(t);
       loreqa_trkNum(secBasic, '첨부 글자 수', 'attachChars', 0, 0, '페르소나·작가의 노트를 보조 모델에 붙일 때 이만큼까지. 분기·전개·원작 브리핑 공통. 0이면 제한 없음 (기본)');
       loreqa_personaCheckRow(secBasic); }
+    { const t = loreqa_el('div', 'loreqa-label', 'PDF 전송 (모든 모드 공통)'); t.style.marginTop = '12px'; secBasic.appendChild(t);
+      loreqa_trkNum(secBasic, 'PDF 글자 크기 (px)', 'pdfFontPx', 20, 12, 'PDF 전송을 켠 요청에서 대화를 그림으로 그릴 글자 크기 (12~40). 키우면 모델이 원문 인용을 더 정확히 옮겨 적지만 페이지가 늘어 이미지 토큰도 늘어남 (24px ≈ 1.4배)'); }
 
 
     settingsPanel.appendChild(secBasic);
@@ -10195,7 +10198,10 @@ async function scoutPdfEncode(text) {
     canvas.width = 1200; canvas.height = 1697;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw Error('이 환경에서는 PDF 렌더링을 사용할 수 없습니다.');
-    ctx.font = '20px sans-serif';
+    // 한자·한글 획이 또렷한 글꼴을 먼저, 글자 크기는 설정 (줄 간격 1.4배, 페이지당 줄 수는 그에 맞춰)
+    const px = Math.max(12, Math.min(40, Number(loreqa_cfg.pdfFontPx) || 20)), lh = Math.round(px * 1.4);
+    const font = `${px}px "Noto Sans JP", "Noto Sans KR", "Yu Gothic", Meiryo, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+    ctx.font = font;
     const lines = [];
     for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
         let line = '';
@@ -10205,16 +10211,16 @@ async function scoutPdfEncode(text) {
         }
         lines.push(line);
     }
-    const perPage = 55, count = Math.max(1, Math.ceil(lines.length / perPage));
+    const perPage = Math.floor((canvas.height - 120) / lh), count = Math.max(1, Math.ceil(lines.length / perPage));
     if (count > 40) throw Error('PDF가 40페이지를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
     const objects = [], add = s => { objects.push(s); return objects.length; };
     add('<< /Type /Catalog /Pages 2 0 R >>'); add('');
     const kids = [];
     for (let page = 0; page < count; page++) {
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#000'; ctx.font = '20px sans-serif'; ctx.textBaseline = 'top';
-        lines.slice(page * perPage, (page + 1) * perPage).forEach((line, i) => ctx.fillText(line, 60, 60 + i * 28));
-        const jpeg = atob(canvas.toDataURL('image/jpeg', 0.88).split(',')[1]);
+        ctx.fillStyle = '#000'; ctx.font = font; ctx.textBaseline = 'top';
+        lines.slice(page * perPage, (page + 1) * perPage).forEach((line, i) => ctx.fillText(line, 60, 60 + i * lh));
+        const jpeg = atob(canvas.toDataURL('image/jpeg', 0.95).split(',')[1]);
         const imageId = add(`<< /Type /XObject /Subtype /Image /Width 1200 /Height 1697 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n${jpeg}\nendstream`);
         const drawing = 'q 595 0 0 842 0 0 cm /Im0 Do Q';
         const streamId = add(`<< /Length ${drawing.length} >>\nstream\n${drawing}\nendstream`);

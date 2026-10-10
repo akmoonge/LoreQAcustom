@@ -180,6 +180,8 @@ comments are Korean.
 - Branch PDF toggle exists, but PDF renders text as images, so quotes come back with OCR-like typos (結界→結果,
   stray characters) and were all rejected. `scoutQuoteFuzzy` now accepts a quote whose nearest same-length span
   (anchored on an exact 8-char piece) is ≥ 85% identical by edit distance, and stores the original text's span.
+  `scoutPdfEncode`: 1200×1697 JPEG page (quality 0.95), CJK fonts first, size `pdfFontPx` (default 20, 12–40, in
+  기본·프리셋 tab; bigger = more pages = more image tokens on Gemini), line height 1.4×.
 
 ### Position (전개모드)
 
