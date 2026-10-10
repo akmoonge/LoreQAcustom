@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.49
+//@version 3.2.50
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7611,11 +7611,28 @@ function loreqa_posBucket(st, key, label) {
     if (!st.byPos[key]) st.byPos[key] = { label: label || key, secrets: '', qa: [] };
     return st.byPos[key];
 }
+// 플레이어 캐릭터 칸: 페르소나에서 이야기가 바꾼 것만, 칸마다 정해진 자리에 (one = 칸 하나에 기록 하나, 아니면 항목마다 하나)
+const LOREQA_PC_SLOTS = {
+    party:     { one: true, ko: '동행', en: 'travelling with' },
+    home:      { one: true, ko: '거처·후견', en: 'home / guardian' },
+    standing:  { one: true, ko: '이름·신분', en: 'known name / standing' },
+    items:     { ko: '지닌 것·능력', en: 'items / abilities' },
+    condition: { ko: '몸 상태', en: 'lasting condition' },
+    secrets:   { ko: '알게 된 원작 비밀', en: 'canon secrets she knows' },
+    promises:  { ko: '약속·목표', en: 'promises / goals' },
+};
+const loreqa_slotOf = e => (e && Object.prototype.hasOwnProperty.call(LOREQA_PC_SLOTS, e.slot)) ? e.slot : '';
+// 같은 상태인지 가르는 열쇠: 보통은 인물+항목, 플레이어 칸은 인물+칸(값 하나짜리 칸) 또는 인물+칸+항목
+function loreqa_stateKey(e) {
+    const ent = String(e.entity).trim().toLowerCase(), sl = loreqa_slotOf(e);
+    if (sl && LOREQA_PC_SLOTS[sl].one) return ent + '\u0000#' + sl;
+    return ent + '\u0000' + (sl ? '#' + sl + '\u0000' : '') + String(e.dimension).trim().toLowerCase();
+}
 // 같은 인물·항목은 가장 최근 상태 하나만 (예전 상태가 목록 자리를 차지하지 않게)
 function loreqa_latestStates(list) {
     const seen = new Set(), out = [];
     for (let i = list.length - 1; i >= 0; i--) {
-        const k = String(list[i].entity).trim().toLowerCase() + '\u0000' + String(list[i].dimension).trim().toLowerCase();
+        const k = loreqa_stateKey(list[i]);
         if (seen.has(k)) continue; seen.add(k); out.unshift(list[i]);
     }
     return out;
@@ -8104,7 +8121,7 @@ async function loreqa_firstPassContext(marker) {
 // 메인 모델 후보: 0 끔 / 1 ★만 / 2 전부 / 3 ★ 우선 + 남는 만큼 (3은 글자 수 상한 안에서 ★를 먼저 채움)
 function loreqa_mainDivergences(list) {
     const m = Number(loreqa_cfg.branchMainTier ?? 3);
-    return m === 0 ? [] : m === 1 ? list.filter(e => e.core) : list;
+    return m === 0 ? [] : m === 1 ? list.filter(e => e.core || loreqa_slotOf(e)) : list;
 }
 // 실제로 메인에 들어가는 기록 수 (표시용, 주입과 같은 계산)
 function loreqa_mainDivCount(list) {
@@ -8129,6 +8146,7 @@ function loreqa_pickDivergences(list, ko, limKey, coreFirst = false) {
             keep.add(i); budget -= n;
         }
     };
+    take(e => loreqa_slotOf(e)); // 플레이어 캐릭터 칸은 몇 줄뿐이고 매 장면 필요하다: 먼저 채운다
     if (coreFirst) take(e => e.core);
     take(() => true);
     return list.filter((_, i) => keep.has(i));
@@ -8136,7 +8154,14 @@ function loreqa_pickDivergences(list, ko, limKey, coreFirst = false) {
 function loreqa_formatDivergences(ctx, ko, limKey = 'divHelperChars', coreFirst = false) {
     if (!ctx.divergences.length && !ctx.fixed) return '';
     let out = ko ? '\n\n# 이 이야기에서 확정된 변경 (원작보다 우선)\n' : '\n\n# Confirmed Changes in This Story (override canon)\n';
-    out += loreqa_pickDivergences(ctx.divergences, ko, limKey, coreFirst).map(e => loreqa_divLine(e, ko)).join('');
+    const picked = loreqa_pickDivergences(ctx.divergences, ko, limKey, coreFirst), pc = picked.filter(e => loreqa_slotOf(e)), rest = picked.filter(e => !loreqa_slotOf(e));
+    if (pc.length) {
+        const name = pc[pc.length - 1].entity;
+        out += (ko ? `## ${name}의 지금 상태 (페르소나에서 바뀐 것)\n` : `## ${name}'s current state (changes from the persona)\n`)
+            + pc.map(e => `- ${LOREQA_PC_SLOTS[e.slot][ko ? 'ko' : 'en']} · ${e.dimension}: ${e.after}\n`).join('')
+            + (rest.length ? (ko ? '## 원작 인물·사건이 달라진 점\n' : '## Changes to the original\n') : '');
+    }
+    out += rest.map(e => loreqa_divLine(e, ko)).join('');
     if (!ctx.divergences.length) out += ko ? '- (자동 기록 없음)\n' : '- (no automatic records)\n';
     if (ctx.fixed) out += (ko ? '\n# 사용자 고정 변경 기록 (자동 기록과 충돌하면 이쪽 우선)\n' : '\n# User Fixed Records (override automatic records on conflict)\n') + ctx.fixed + '\n';
     return out;
@@ -8522,14 +8547,14 @@ For (a), "invalidates" MUST state the original's version that no longer holds. F
 //   이미 끝난 상태가 계속 참으로 남던 문제 (예: 小夜 · 犬夜叉一行との関係 = 동행). 잠긴 부분에 넣어 고친 프롬프트에도 적용된다.
 const SCOUT_LEDGER_KEEP_TRUE=`KEEPING THE LEDGER TRUE (this overrides the DIVERGENCE GATE and the "Do NOT record" list): "ledger" is passed to other models as current fact, so a record that is no longer true does more harm than a missing one. For every record in "ledger", check whether a new message ends, reverses or changes that state: someone leaves, rejoins or parts from a group, is released or captured, recovers, reconciles, changes sides, moves out, or a relationship or arrangement ends. If so, emit an event with the SAME entity and the SAME dimension whose "after" is the state as it is now (for example "allied with Inuyasha's group, but now travelling alone, apart from them"), even if the new state alone would not pass the gate. When one change makes several records untrue (A parts from B: A's record and B's record), update each of them. In "review", name any ledger record a new message makes untrue. Do not use this rule to add facts that are not already in the ledger.
 NOTHING BEYOND THE EVIDENCE: every specific detail in a record (a family relation and which parent it goes through, half- or step-, a title, a date, a number, a place, a name, a reason) must be stated in the evidence quotes or in the player settings (player_persona). "Write each record in detail" means include everything the evidence says, never fill gaps. If a quote only says "your brother", write "brother", not 異母兄 or 異父兄; if player_persona states the relation, use that. Never guess from the original work what the story has not said. NAMES: write every person's name the same way everywhere (entity, dimension, change, after, invalidates): if the ledger already names someone, copy that exact spelling and script; otherwise use the form the story's messages use (e.g. 小夜, not Sayo or サヨ, when the messages write 小夜). Never switch to a romanized or translated form, even inside an English template phrase such as "relationship with <name>". Write the dimension in the same language as the rest of the record (e.g. 「小夜との関係」 for a Japanese record). The dimension names the lasting state (「犬夜叉の存在の認知」, 「後見人」), never the scene it came from (not 「〜への告白」, 「〜の夜の出来事」), so that later changes to the same state reuse it. "after" states the current state itself, in one or two sentences: how things stand and how the character feels and acts toward her now. Scene details (blushing, a smile, a smell, a gesture, who said what in which scene) are not the state: leave them out unless the state cannot be said without them. When you update a record with the same entity and dimension, the new "after" replaces the old one, so carry over what is still true from the ledger record (e.g. still travelling together, still worried about her) and add what changed.
-WHAT COUNTS AS INVOLVING THE ORIGINAL (gate C): the element from the original must be what changed or what the change affects. A canon character who only speaks, tells, warns, witnesses or is present does not count; but a change in how that canon character feels about or treats someone does (see RELATIONSHIPS). A canon character telling the player's character about people, places, groups or plans invented in this story is not a divergence; record it only if it changes something about the original (a canon character's own situation, side, relationship or knowledge of the original's facts or secrets). A generic word (bandits, demon slayers, villagers, an official's office) is not an element of the original unless the story clearly means the specific group from the original. "knowledge_anchor" is only for what a canon character knows, or who knows a fact or secret of the original. RELATIONSHIPS: how a canon character feels about and treats the player's character now (trust, wariness, hostility, affection, protectiveness, rivalry, accepting her as family or as one of their group) is a change to that canon character and passes gate C. Keep it as its own record with one dimension meaning "relationship with <player character name>" (written in the record language, e.g. 「小夜との関係」), separate from what they know about her (identity, kinship): never mix the two in one record. Time spent together is not recorded, but a change in feelings that comes out of it is: a trip, a meal or a shared fight is not a record, "he now trusts her and fights beside her" is. Relationships move slowly across many scenes: compare the "ledger" record with the new messages, and when the relationship has clearly moved on from what the ledger says (for example the ledger says they are confronting each other but they now travel and fight together amicably), emit the SAME entity and dimension with the current state, even if this batch alone shows only a small step. If the ledger has no relationship record yet for a canon character who has spent real time with her, write one from what the messages show. Whether she travels with a canon group is ONE record on her (entity: the player's character, category custody_affiliation, dimension meaning "travelling with <group>"), updated when she joins or leaves; relationship records say how each one feels, not where she is or whom she sits with. A knowledge record says only what the character knows; feelings belong in the relationship record. A state that was in progress in the ledger (something being made, a promise pending, an injury healing) must be updated when the messages show it finished. Relationship records are "core": false unless they are a relationship status (family accepted, romance, enmity, alliance). INVALIDATES for records about the player's character: write the assumption from the original that a writer would wrongly carry into this story because of this record, e.g. "In the original [canon mother] has one child, [canon son]", "In the original [canon character] has no ward and trusts almost no one", "In the original [canon smith] makes nothing for outsiders". The [bracketed] names are placeholders: use the real names from this story, never these examples. Only the empty statement "she does not exist in the original" or "they never met in the original" is banned; leave "invalidates" empty only when no assumption of the original is affected at all. Do not repeat a basic premise that another record in the ledger already states (e.g. "[canon mother] has one child" written once on the record that establishes her); name only the assumption THIS record overturns beyond that ("In the original [canon hero] travels with no family member"), or leave it empty if there is none.`;
+WHAT COUNTS AS INVOLVING THE ORIGINAL (gate C): the element from the original must be what changed or what the change affects. A canon character who only speaks, tells, warns, witnesses or is present does not count; but a change in how that canon character feels about or treats someone does (see RELATIONSHIPS). A canon character telling the player's character about people, places, groups or plans invented in this story is not a divergence; record it only if it changes something about the original (a canon character's own situation, side, relationship or knowledge of the original's facts or secrets). A generic word (bandits, demon slayers, villagers, an official's office) is not an element of the original unless the story clearly means the specific group from the original. "knowledge_anchor" is only for what a canon character knows, or who knows a fact or secret of the original. RELATIONSHIPS: how a canon character feels about and treats the player's character now (trust, wariness, hostility, affection, protectiveness, rivalry, accepting her as family or as one of their group) is a change to that canon character and passes gate C. Keep it as its own record with one dimension meaning "relationship with <player character name>" (written in the record language, e.g. 「小夜との関係」), separate from what they know about her (identity, kinship): never mix the two in one record. Time spent together is not recorded, but a change in feelings that comes out of it is: a trip, a meal or a shared fight is not a record, "he now trusts her and fights beside her" is. Relationships move slowly across many scenes: compare the "ledger" record with the new messages, and when the relationship has clearly moved on from what the ledger says (for example the ledger says they are confronting each other but they now travel and fight together amicably), emit the SAME entity and dimension with the current state, even if this batch alone shows only a small step. If the ledger has no relationship record yet for a canon character who has spent real time with her, write one from what the messages show. Relationship records hold how both of them treat each other (how the canon character treats her, and how she treats him: calls him brother, fears him, follows him), not where she is or whom she sits with. PLAYER CHARACTER STATE: the player's character (player_character) also has her own records, one kind per slot. Set "slot" on these records and leave it "" on every other record. Slots: "party" (which canon group she travels with, or alone), "home" (where she lives, who is her guardian), "standing" (the name she is known by, reputation, rank) - one record each, rewritten when it changes; "items" (things she now has and abilities she gained: one record per item or ability), "condition" (lasting injury, curse, illness: one per condition), "secrets" (facts or secrets of the original she has learned: one per fact), "promises" (promises, debts, missions or goals that involve canon characters: one per promise; record it again as fulfilled or dropped when that happens). entity = player_character exactly; the dimension names the item, condition, fact or promise (for one-record slots, any short name). Category: party/home/standing custody_affiliation, items ability_item, condition survival, secrets knowledge_anchor, promises key_event. Record only what the story changed or added compared with player_persona; never copy the persona. These slots are exempt from gate C (they need no canon element), but nothing else about her is: no moods, no daily activities, no relationships or events only among characters invented in this story. Where she is, whom she travels with and what she carries belong in these slots, not in canon characters' records. Update the slot record when it changes (she leaves the group, the sword is finished, the promise is kept). A knowledge record says only what the character knows; feelings belong in the relationship record. A state that was in progress in the ledger (something being made, a promise pending, an injury healing) must be updated when the messages show it finished. Relationship records are "core": false unless they are a relationship status (family accepted, romance, enmity, alliance). INVALIDATES for records about the player's character: write the assumption from the original that a writer would wrongly carry into this story because of this record, e.g. "In the original [canon mother] has one child, [canon son]", "In the original [canon character] has no ward and trusts almost no one", "In the original [canon smith] makes nothing for outsiders". The [bracketed] names are placeholders: use the real names from this story, never these examples. Only the empty statement "she does not exist in the original" or "they never met in the original" is banned; leave "invalidates" empty only when no assumption of the original is affected at all. Do not repeat a basic premise that another record in the ledger already states (e.g. "[canon mother] has one child" written once on the record that establishes her); name only the assumption THIS record overturns beyond that ("In the original [canon hero] travels with no family member"), or leave it empty if there is none.`;
 function scoutLedgerExtractRule(){
     const lang=scoutLang();
     const oc=scoutOpt('original')?scoutOcRule('')+' The player OC is not a canon character: a change the OC causes is recorded only for what it changes in the original story (canon characters, canon events, canon plot), never for the OC\'s own facts or who knows them.':'';
     const cut=SCOUT_LEDGER_EXTRACT.indexOf('Return JSON only:');
     const locked=SCOUT_LEDGER_EXTRACT.slice(cut).replace('use the empty string "" when no original-work assumption is invalidated','follow the DIVERGENCE GATE for its content')
         // 빈 배열로 바로 끝내지 못하게: 새 메시지마다 원작과 비교한 한 줄을 먼저 쓰게 한다 (플러그인은 events만 읽음)
-        .replace('"when":"source time or unknown",','"when":"source time or unknown","core":false,')
+        .replace('"when":"source time or unknown",','"when":"source time or unknown","core":false,"slot":"",')
         .replace('Return JSON only: {"events":','Return JSON only: {"review":["one short line per new assistant/char message: index, what current state in it differs from the original or the player character settings (or \'no state change\'), and whether a later scene would be written wrong without it"],"events":')
         .replace('Return {"events":[]} when no event passes the significance rules above. Durability alone is insufficient.','Write "review" first, then derive "events" from it: every review line that names a current state a later scene would get wrong must become an event unless the ledger already has that state. Each review line that proposes an event must also name the ORIGINAL character, group, place or event it involves (gate C); if it can name none (for example a death or quarrel among characters invented by the story), it is not an event. "events" is empty when no review line does.');
     const base=loreqa_prompt('ledger',{source:loreqa_cfg.source},false)+'\n'+SCOUT_LEDGER_KEEP_TRUE+'\n'+locked;
@@ -8872,6 +8897,7 @@ function scoutLedgerValidate(raw,batch,start,ledger,opts={}){
         out.evidence=ev;
         if(!confirmed)throw Error('완료된 RP 근거 없이 변경을 확정할 수 없습니다.');
         out.core=e.core===true||e.core==='true'||e.tier==='core';
+        if(loreqa_slotOf(e))out.slot=e.slot;
         out.id='event:'+scoutHash(JSON.stringify([out.entity,out.dimension,out.after,out.evidence]));return out;
     };
     const events=[];
@@ -8883,7 +8909,7 @@ function scoutLedgerValidate(raw,batch,start,ledger,opts={}){
     events.rejected=rejected;
     return events;
 }
-function scoutLedgerProjection(ledger){return ledger.events.filter(e=>!ledger.excluded.includes(e.id)).map(({id,entity,dimension,category,change,after,invalidates,when,evidence,core})=>({id,entity,dimension,category,change,after,invalidates,when,core:!!core,source_messages:evidence.map(v=>v.index)}));}
+function scoutLedgerProjection(ledger){return ledger.events.filter(e=>!ledger.excluded.includes(e.id)).map(({id,entity,dimension,category,change,after,invalidates,when,evidence,core,slot})=>({id,entity,dimension,category,change,after,invalidates,when,core:!!core,...(loreqa_slotOf({slot})?{slot}:{}),source_messages:evidence.map(v=>v.index)}));}
 function scoutLedgerSplitEnd(messages,start,end) {
     const boundaries=[];
     for(let i=start+1;i<end;i++)if(['char','assistant'].includes(messages[i-1]?.role))boundaries.push(i);
@@ -8895,7 +8921,7 @@ function scoutLedgerSplitEnd(messages,start,end) {
 const scoutLedgerBackupKey=scope=>'canon_scout_major_v1_backup:'+scope;
 const scoutLedgerAbort=new Set(); // 읽기 중지 요청
 const SCOUT_TIDY_LOCKED=`Keep family relations, lineage and identities consistent across records. Where records disagree on such a detail (for example one says 異母兄 and another 異父兄), keep only what their source_messages evidence actually supports, otherwise the less specific term; never add a detail no record supports.
-A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" are protected by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nWrite each person's name in one spelling and script across all records (the form most records use, as written in the story); rewrite a record whose entity, dimension or text uses another spelling (e.g. a romanized name), and write dimensions in the records' language.\nWrite each "after" as the current state in one or two sentences, without scene details (blushing, smiles, smells, gestures).\nRecords with the same entity and the same dimension are one state: always merge them into one. The merged "after" follows the NEWEST of them where they differ (if the newest says she left, do not write that they still travel together) and keeps older details only while still true.\nUse a single-record merge to rewrite any record whose "after" is mostly scene description, or whose "invalidates" repeats a premise another record already states.\nState a basic premise of the original in "invalidates" only once, on the record that establishes it; in other records keep only what that record overturns beyond it, or "".\nDrop a record whose only link to the original is a canon character who told, warned, witnessed or was present, while what changed concerns only the player's character and people, places, groups or plans invented in this story (unless it is locked). Never drop a record of how a canon character feels about or treats the player's character for this reason.\nKeep "relationship with <name>" records separate from records of what someone knows; when a record mixes an old stance (e.g. confronting her) with knowledge and recent_story_messages show the stance has changed, rewrite it to the knowledge plus the current stance.\nEach record has an "id" (r1, r2, ...). Return JSON only:
+A record that recent_story_messages show is no longer true (someone has since left or rejoined a group, parted ways, been released, reconciled, changed sides or moved) must be rewritten to the current state with the same entity and dimension, or dropped if nothing of it still holds (records marked "locked" are protected by the user: leave those as they are). Keep records that state the same fact under different entities consistent with each other.\nWrite each person's name in one spelling and script across all records (the form most records use, as written in the story); rewrite a record whose entity, dimension or text uses another spelling (e.g. a romanized name), and write dimensions in the records' language.\nWrite each "after" as the current state in one or two sentences, without scene details (blushing, smiles, smells, gestures).\nRecords with a \"slot\" are the player character's own state: keep the slot on merges (\"slot\" in the merge object), never merge records of different slots, and never drop them for having no canon element. Records with the same entity and the same dimension are one state: always merge them into one. The merged "after" follows the NEWEST of them where they differ (if the newest says she left, do not write that they still travel together) and keeps older details only while still true.\nUse a single-record merge to rewrite any record whose "after" is mostly scene description, or whose "invalidates" repeats a premise another record already states.\nState a basic premise of the original in "invalidates" only once, on the record that establishes it; in other records keep only what that record overturns beyond it, or "".\nDrop a record whose only link to the original is a canon character who told, warned, witnessed or was present, while what changed concerns only the player's character and people, places, groups or plans invented in this story (unless it is locked). Never drop a record of how a canon character feels about or treats the player's character for this reason.\nKeep "relationship with <name>" records separate from records of what someone knows; when a record mixes an old stance (e.g. confronting her) with knowledge and recent_story_messages show the stance has changed, rewrite it to the knowledge plus the current stance.\nEach record has an "id" (r1, r2, ...). Return JSON only:
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
@@ -8911,7 +8937,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     const idOf=new Map(),evOf=new Map();
     live.forEach((e,i)=>{const r='r'+(i+1);idOf.set(e.id,r);evOf.set(r,e);});
     let position='';try{position=(await loreqa_posLoad(scope))?.cur?.label||'';}catch(_){}
-    const records=live.map(e=>({id:idOf.get(e.id),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:scoutLocked(e),source_messages:(e.evidence||[]).map(v=>v.index)}));
+    const records=live.map(e=>({id:idOf.get(e.id),...(loreqa_slotOf(e)?{slot:e.slot}:{}),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:scoutLocked(e),source_messages:(e.evidence||[]).map(v=>v.index)}));
     const system=loreqa_prompt('tidy',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_TIDY_LOCKED;
     const [bt,bp]=loreqa_branchApi();
     const started=Date.now();
@@ -8937,6 +8963,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
         const evidence=[];for(const e of src)for(const q of e.evidence||[])if(!evidence.some(x=>x.index===q.index&&x.quote===q.quote))evidence.push(q);
         const category=allowed.has(m?.category)?m.category:src[src.length-1].category;
         const out={entity,dimension,category,change:str(m?.change,500)||src[src.length-1].change,after,invalidates:str(m?.invalidates,500),when:str(m?.when,120)||src[src.length-1].when||'unknown',evidence,core:m?.core===true||m?.core==='true',tidied:true};
+        { const sl=loreqa_slotOf(m)||src.map(loreqa_slotOf).find(Boolean); if(sl)out.slot=sl; }
         out.id='event:'+scoutHash(JSON.stringify([out.entity,out.dimension,out.after,out.evidence]));
         merges.push({from:src.map(e=>e.id),event:out});
     }
@@ -8946,7 +8973,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
         used.add(r);drops.push({id:evOf.get(r).id,by:evOf.get(d?.by)?evOf.get(d.by).entity+' · '+evOf.get(d.by).dimension:'',reason:str(d?.reason,200)});
     }
     // 모델이 합치지 않고 남긴 같은 인물·항목 기록은 가장 최근 것만 남긴다 (보조·메인 모델도 원래 최신 것만 받는다)
-    { const keyOf=e=>String(e.entity).trim().toLowerCase()+'\u0000'+String(e.dimension).trim().toLowerCase(), last=new Map();
+    { const keyOf=loreqa_stateKey, last=new Map();
       for(const [r,e] of evOf)if(!used.has(r))last.set(keyOf(e),r);
       // 합친 결과가 같은 항목이면 남은 옛 기록도 그 결과가 대신한다
       const mergedKeys=new Set(merges.map(m=>keyOf(m.event)));
@@ -9099,6 +9126,7 @@ function loreqa_cleanLedgerEvent(raw) {
     const t = (k, n) => String(raw[k] ?? '').trim().slice(0, n);
     const e = { entity: t('entity', 120), dimension: t('dimension', 120), category: LOREQA_LEDGER_CATS.includes(raw.category) ? raw.category : 'key_event',
         change: t('change', 500), after: t('after', 500), invalidates: t('invalidates', 500), when: t('when', 120) || 'unknown', core: raw.core === true || raw.core === 'true' };
+    if (loreqa_slotOf(raw)) e.slot = raw.slot;
     if (!e.entity || !e.dimension || !e.after) return null;
     return e;
 }
@@ -9221,6 +9249,11 @@ async function scoutLedgerPanel(){
             else{input=document.createElement(multi?'textarea':'input');if(ph)input.placeholder=ph;}
             input.style.cssText='display:block;width:100%;box-sizing:border-box;margin-top:2px;background:#11111b;color:#cdd6f4;border:1px solid #313244;border-radius:6px;padding:6px;font-size:12px;'+(multi?'min-height:52px;resize:vertical;':'');
             w.appendChild(input);add.appendChild(w);f[key]=input;};
+        // 플레이어 캐릭터 칸 (비우면 보통 기록)
+        { const w=document.createElement('label');w.style.cssText='display:block;margin-top:6px;font-size:11px;color:#a6adc8';w.textContent='플레이어 캐릭터 칸 (보통 기록이면 비움)';
+          const sel=document.createElement('select');sel.className='loreqa-select';sel.style.cssText='display:block;width:100%;margin-top:2px';
+          for(const [v,l] of [['','(보통 기록)'],...Object.entries(LOREQA_PC_SLOTS).map(([k,o])=>[k,o.ko])]){const o=document.createElement('option');o.value=v;o.textContent=l;sel.appendChild(o);}
+          w.appendChild(sel);add.appendChild(w);f.slot=sel; }
         fld('entity','인물·대상 (필수)',false,'예: 小夜');fld('dimension','항목 (필수, 같은 사실의 기준 키)',false,'예: 犬夜叉一行との関係');fld('category','분류');
         fld('change','무엇이 바뀌었나',true);fld('after','바뀐 뒤 상태 (필수)',true);fld('invalidates','깨진 원작 사실 (없으면 비움)',true);fld('when','시점',false,'모르면 비움');
         const cw=document.createElement('label');cw.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:#cdd6f4';const cb=document.createElement('input');cb.type='checkbox';cw.append(cb,document.createTextNode('★ 핵심'));add.appendChild(cw);
@@ -9234,7 +9267,7 @@ async function scoutLedgerPanel(){
     for(const event of [...ledger.events].reverse()){
         const excluded=ledger.excluded.includes(event.id);
         const row=document.createElement('details'),summary=document.createElement('summary');
-        summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
+        summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(loreqa_slotOf(event)?`[${LOREQA_PC_SLOTS[event.slot].ko}] `:'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
         if(excluded)summary.classList.add('loreqa-excluded');
         row.appendChild(summary);
         const fields={};
@@ -9246,13 +9279,17 @@ async function scoutLedgerPanel(){
             input.style.cssText='display:block;width:100%;box-sizing:border-box;margin-top:2px;background:#11111b;color:#cdd6f4;border:1px solid #313244;border-radius:6px;padding:6px;font-size:12px;'+(multi?'min-height:52px;resize:vertical;':'');
             wrap.appendChild(input);row.appendChild(wrap);fields[key]=input;
         };
+        { const wrap=document.createElement('label');wrap.style.cssText='display:block;margin-top:6px;font-size:11px;color:#a6adc8';wrap.textContent='플레이어 캐릭터 칸';
+          const sel=document.createElement('select');sel.className='loreqa-select';sel.style.cssText='display:block;width:100%;margin-top:2px';
+          for(const [v,l] of [['','(보통 기록)'],...Object.entries(LOREQA_PC_SLOTS).map(([k,o])=>[k,o.ko])]){const o=document.createElement('option');o.value=v;o.textContent=l;if(v===(loreqa_slotOf(event)||''))o.selected=true;sel.appendChild(o);}
+          wrap.appendChild(sel);row.appendChild(wrap);fields.__slot=sel; }
         field('entity','인물·대상');field('dimension','항목 (같은 사실의 기준 키)');field('category','분류');
         field('change','무엇이 바뀌었나',true);field('after','바뀐 뒤 상태',true);field('invalidates','깨진 원작 사실 (없으면 비움)',true);field('when','시점');
         {const wrap=document.createElement('label');wrap.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:#cdd6f4';const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!event.core;wrap.append(cb,document.createTextNode('★ 핵심 (메인 모델에도 넣음)'));row.appendChild(wrap);fields.__core=cb;}
         if(event.evidence?.length){const ev=document.createElement('pre');ev.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;opacity:.75';ev.textContent='근거 (원문 인용):\n'+event.evidence.map(v=>`#${v.index} ${v.quote}`).join('\n');row.appendChild(ev);}
         const btns=document.createElement('div');btns.style.marginTop='6px';
         const mkb=(t,fn,color)=>{const x=document.createElement('button');x.textContent=t;if(color)x.style.color=color;x.onclick=fn;btns.appendChild(x);};
-        mkb('수정 저장',()=>editLedger(l=>{const e=l.events.find(x=>x.id===event.id);if(!e)throw Error('이미 지워진 기록입니다.');for(const[k,el]of Object.entries(fields)){if(k==='__core'){e.core=!!el.checked;continue;}e[k]=String(el.value).trim().slice(0,k==='entity'||k==='dimension'||k==='when'?120:500);}if(!e.entity||!e.dimension)throw Error('인물·대상과 항목은 비울 수 없습니다.');e.edited=true;}));
+        mkb('수정 저장',()=>editLedger(l=>{const e=l.events.find(x=>x.id===event.id);if(!e)throw Error('이미 지워진 기록입니다.');for(const[k,el]of Object.entries(fields)){if(k==='__core'){e.core=!!el.checked;continue;}if(k==='__slot'){if(el.value)e.slot=el.value;else delete e.slot;continue;}e[k]=String(el.value).trim().slice(0,k==='entity'||k==='dimension'||k==='when'?120:500);}if(!e.entity||!e.dimension)throw Error('인물·대상과 항목은 비울 수 없습니다.');e.edited=true;}));
         { const lk=scoutLocked(event); mkb(lk?'🔒 보호 해제':'정리에서 보호',()=>editLedger(l=>{const e=l.events.find(x=>x.id===event.id);if(e)e.locked=!lk;})); }
         mkb(excluded?'다시 사용':'이 기록 제외',()=>editLedger(l=>{l.excluded=excluded?l.excluded.filter(x=>x!==event.id):[...new Set([...l.excluded,event.id])];}));
         mkb('삭제',()=>{if(!confirm(`"${event.entity} · ${event.dimension}" 기록을 삭제할까요? 되돌릴 수 없습니다.`))return;editLedger(l=>{l.events=l.events.filter(x=>x.id!==event.id);l.excluded=l.excluded.filter(x=>x!==event.id);});},'#f38ba8');
