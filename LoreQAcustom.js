@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.29
+//@version 3.2.30
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -1697,6 +1697,10 @@ async function loreqa_openSettingsWindow() {
     sourceRow.appendChild(sourceLbl);
     sourceRow.appendChild(sourceInput);
     secBasic.appendChild(sourceRow);
+    // 모드 공통: 페르소나 · 작가의 노트 첨부 (분기 · 전개 · 원작 브리핑이 같은 값을 쓴다)
+    { const t = loreqa_el('div', 'loreqa-label', '페르소나 · 작가의 노트 (모든 모드 공통)'); t.style.marginTop = '12px'; secBasic.appendChild(t);
+      loreqa_trkNum(secBasic, '첨부 글자 수', 'attachChars', 0, 0, '페르소나·작가의 노트를 보조 모델에 붙일 때 이만큼까지. 분기·전개·원작 브리핑 공통. 0이면 제한 없음 (기본)');
+      loreqa_personaCheckRow(secBasic); }
 
 
     settingsPanel.appendChild(secBasic);
@@ -6679,7 +6683,7 @@ async function loreqa_getPersonaDescription() {
 async function loreqa_personaCheckText() {
     const name = await loreqa_getPersonaName(), text = await loreqa_getPersonaDescription(), p = loreqa_personaLast, cap = loreqa_lim('attachChars');
     if (!p.ok) return '✗ 페르소나를 읽지 못했습니다: ' + p.reason;
-    return `✓ 읽힘: ${p.name || name} · ${p.len.toLocaleString()}자${cap && p.len > cap ? ` (첨부 글자 수 ${cap.toLocaleString()}자에서 잘림 — 뒷부분은 보조 모델에 안 감)` : ''}\n앞부분: ${p.head}${text.length > 160 ? '…' : ''}\n※ 채팅마다 다른 페르소나를 묶어 쓰면 여기 보이는 것과 실제 대화의 페르소나가 다를 수 있습니다.`;
+    return `✓ 읽힘: ${p.name || name} · ${p.len.toLocaleString()}자${cap && p.len > cap ? ` (첨부 글자 수 ${cap.toLocaleString()}자에서 잘림 — 뒷부분은 보조 모델에 안 감. 기본·프리셋 탭에서 바꿈)` : ''}\n앞부분: ${p.head}${text.length > 160 ? '…' : ''}\n※ 채팅마다 다른 페르소나를 묶어 쓰면 여기 보이는 것과 실제 대화의 페르소나가 다를 수 있습니다.`;
 }
 
 // RisuAI 작가의 노트 조회
@@ -9825,7 +9829,7 @@ function loreqa_buildBranchContent(left,right){
     right.appendChild(secSet);
     const secModel=scoutSection('모델 · 첨부');
     loreqa_trkApiRows(secModel,'branchApi','branchModel','분기 추출에 쓸 API.');
-    loreqa_trkToggle(secModel,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀');
+    loreqa_trkToggle(secModel,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀. 길이 상한은 기본·프리셋 탭');
     loreqa_personaCheckRow(secModel);
     loreqa_trkToggle(secModel,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
     loreqa_trkToggle(secModel,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
@@ -9889,7 +9893,7 @@ function loreqa_buildFlowContent(left,right){
     const charSec=scoutSection('캐릭터 & 보정 (전개)');
     loreqa_trkToggle(charSec,'flowOriginal','오리지널 캐릭터','유저 캐릭터가 원작에 없는 OC');
     loreqa_trkToggle(charSec,'flowDoubt','검증 의심 지침','위치·가드·가이드 블록에 "틀릴 수 있음" 경고');
-    loreqa_trkToggle(charSec,'flowPersona','페르소나 포함','위치 판정·가드·가이드에 페르소나 첨부');
+    loreqa_trkToggle(charSec,'flowPersona','페르소나 포함','위치 판정·가드·가이드에 페르소나 첨부. 길이 상한은 기본·프리셋 탭');
     loreqa_personaCheckRow(charSec);
     loreqa_trkToggle(charSec,'flowAuthorNote','작가의 노트 주입','위치 판정·가드·가이드에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값)');
     const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
@@ -9905,7 +9909,6 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(secMore,'메모 답 글자 수','qaMemoAChars',240,0,'위치별 원작 메모에 저장하는 답 길이. 다음 턴 1차 질의에 "이미 다룬 질문"의 요지로 들어가므로 늘리면 그만큼 토큰을 더 씀. 그 턴의 메인 주입은 자르지 않음. 0이면 제한 없음');
     loreqa_trkNum(secMore,'위치당 메모 수','qaKeep',12,0,'위치별 원작 메모를 위치마다 최근 몇 개까지 보관할지. 0이면 제한 없음');
     loreqa_trkNum(secMore,'반복 방지 메모 수','qaRecent',8,0,'1차 질의에 "이 위치에서 이미 다룬 질문"으로 넣는 최근 메모 수. 0이면 보관된 것 전부');
-    loreqa_trkNum(secMore,'첨부 글자 수','attachChars',0,0,'페르소나·작가의 노트를 첨부할 때 이만큼까지. 전개·분기·원작 브리핑 공통. 0이면 제한 없음 (기본)');
     right.append(secSet,secJump,secModel,charSec,secMore);
     // 세계 상태표 개편(3.2.17) 전에 직접 고친 프롬프트는 새 방식과 안 맞을 수 있다. 고친 것은 그대로 두고 알리기만 한다
     {const old={world:'세계 상태표 생성 (출력 형식은 이제 자동으로 붙지만, 예전 내용 지시가 새 규칙과 부딪힐 수 있음)',sceneJudge:'장면 판단',jump:'시간 점프 · 장면 바뀜 감지 (장면 바뀜 SAME/NEW 를 묻지 않으면 장면을 다시 판단하지 않음)',injJump:'위치 블록 안내 (시간 점프)'};

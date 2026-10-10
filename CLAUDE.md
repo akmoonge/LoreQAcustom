@@ -81,7 +81,8 @@ comments are Korean.
   0-wide window at build time (that used to reset it to the minimum).
 - Settings UI layout in each mode tab: frequently used toggles first, then small topic sections
   (모델 · 검색/첨부, 캐릭터 & 보정, 시간 점프), and numbers / caps last in a collapsed
-  `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold.
+  `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold; settings
+  shared by several modes go in the 기본·프리셋 tab instead.
 - Editable prompts: `LOREQA_PROMPTS` + `loreqa_prompt(key, vars)`. A user-saved prompt
   overrides the default, so default changes only reach users who press "기본값으로".
 
@@ -105,7 +106,8 @@ comments are Korean.
   The locked part also has NOTHING BEYOND THE EVIDENCE: details (which parent a sibling shares,
   titles, dates, places, reasons) must be in the quotes or player_persona; "write in detail" made the
   model invent 異父兄 from "そなたの兄". Each extraction log entry has `attached` (persona /
-  author-note chars, cut by attachChars?). Persona comes from `getDatabase(['personas','selectedPersona'])`
+  author-note chars, cut by attachChars?). `attachChars` (default 0 = no cap; old saved 4000 → 0 once via
+  `attachV`) is shared by every mode, so it lives in the 기본·프리셋 tab with a "페르소나 확인" row. Persona comes from `getDatabase(['personas','selectedPersona'])`
   (needs the user's DB permission; Risu's own `personaPrompt` key is not exposed to plugins, chat-bound
   personas may differ); `loreqa_personaLast` keeps why it failed, "페르소나 확인" shows it.
   OC–OC-only facts (e.g. an OC's death with no canon link) stay out of the ledger (gate C);
