@@ -14,6 +14,8 @@ comments are Korean.
 - **Never change `//@name`.** Risu refuses updates whose name differs.
 - `//@version` must be numbers and dots only (Risu splits on `.` and casts to Number;
   any letters make that part 0). Bump it on every push to main, or the update never shows.
+  Bump `const LOREQA_VER` (line ~8) to the same number: it is the only way to see the installed version (console
+  "로드 완료" line, tooltip on the settings window title); Risu's plugin list shows no version.
 - raw.githubusercontent caches for ~5 minutes.
 - Check syntax before every commit: `node --check LoreQAcustom.js`.
 - Never put API keys, proxy URLs or user chat text in the file.
