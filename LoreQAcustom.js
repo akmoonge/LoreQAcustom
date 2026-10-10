@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.54
+//@version 3.2.55
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.2.54';
+const LOREQA_VER = '3.2.55';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -17,7 +17,8 @@ if (typeof risuai === "undefined") {
 
 const LOREQA_DEFAULTS = {
     pdfSend: 0, // Standalone PDF request toggle; disabled by default.
-    pdfFontPx: 20, // PDF 전송 글자 크기(px). 키우면 그림에서 읽는 인용이 정확해지지만 페이지(=이미지 토큰)가 늘어남
+    pdfFontPt: 1,  // PDF 전송 글자 크기(pt). 글자 레이어 PDF 라 정확도와 무관: 작을수록 한 페이지에 많이 들어가 페이지(토큰)가 준다
+    pdfMediaRes: 'low', // Gemini 문서 해상도: low / medium / high / default(보내지 않음). 페이지당 매기는 토큰이 달라진다
     active:   1,       // 0=끄기, 1=항상, 3=현재 봇에서만, 4=현재 채팅에서만 (2=구버전 '원작' 키워드 모드 — 로드 시 1로 마이그레이션)
     floatOn: 1,        // 진행 상황 창 (보조 호출마다 단계 · 시간 · 토큰)
     uiScale: 115,      // 설정창 글자 크기 (%)
@@ -1711,7 +1712,8 @@ async function loreqa_openSettingsWindow() {
       loreqa_trkNum(secBasic, '첨부 글자 수', 'attachChars', 0, 0, '페르소나·작가의 노트를 보조 모델에 붙일 때 이만큼까지. 분기·전개·원작 브리핑 공통. 0이면 제한 없음 (기본)');
       loreqa_personaCheckRow(secBasic); }
     { const t = loreqa_el('div', 'loreqa-label', 'PDF 전송 (모든 모드 공통)'); t.style.marginTop = '12px'; secBasic.appendChild(t);
-      loreqa_trkNum(secBasic, 'PDF 글자 크기 (px)', 'pdfFontPx', 20, 12, 'PDF 전송을 켠 요청에서 대화를 그림으로 그릴 글자 크기 (12~40). 키우면 모델이 원문 인용을 더 정확히 옮겨 적지만 페이지가 늘어 이미지 토큰도 늘어남 (24px ≈ 1.4배)'); }
+      loreqa_trkNum(secBasic, 'PDF 글자 크기 (pt)', 'pdfFontPt', 1, 1, 'PDF 는 그림이 아니라 글자 레이어로 보내므로(Yumi Provider Manager 방식) 모델은 원문을 그대로 읽습니다. 글자가 작을수록 한 페이지에 많이 들어가 페이지당 토큰이 줄어듭니다. 기본 1');
+      secBasic.appendChild(loreqa_createRow('PDF 문서 해상도 (Gemini)', loreqa_createSelect('loreqa-pdf-res', [{value:'low',label:'낮음 (기본, 가장 쌈)'},{value:'medium',label:'중간'},{value:'high',label:'높음'},{value:'default',label:'보내지 않음 (모델 기본값)'}], loreqa_cfg.pdfMediaRes || 'low', async v => { loreqa_cfg.pdfMediaRes = v; await loreqa_saveConfig(); }), 'Gemini 가 PDF 한 페이지에 매기는 토큰 수. 글자 레이어 PDF 는 낮음이어도 글자를 그대로 읽습니다. 오류가 나면 "보내지 않음"')); }
 
 
     settingsPanel.appendChild(secBasic);
@@ -6247,7 +6249,7 @@ async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType
     }
 
     try {
-        body = await scoutPdfPrepare(body, apiType, requestOptions.pdf ?? (requestOptions.ledgerJson ? false : Number(loreqa_cfg.pdfSend) === 1));
+        body = await scoutPdfPrepare(body, apiType, requestOptions.pdf ?? (requestOptions.ledgerJson ? false : Number(loreqa_cfg.pdfSend) === 1), apiModel);
     } catch (error) {
         loreqa_state.lastError = 'PDF 생성 실패: ' + (error.message || error);
         _panel(loreqa_state.lastError + '\nPDF 전송을 끄면 기존 텍스트 방식으로 사용할 수 있습니다.');
@@ -9937,7 +9939,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkToggle(secModel,'branchPersona','페르소나 포함','분기 추출에 페르소나 첨부. 플레이어 캐릭터를 알아보는 데 씀. 길이 상한은 기본·프리셋 탭');
     loreqa_personaCheckRow(secModel);
     loreqa_trkToggle(secModel,'branchAuthorNote','작가의 노트 주입','분기 추출에 작가의 노트 첨부 (현재 채팅 우선, 없으면 기본값). AU 전제를 알아보는 데 씀');
-    loreqa_trkToggle(secModel,'branchPdf','PDF 전송','분기 추출 요청을 PDF로 전송. PDF 입력 지원 모델만. 원문 인용을 그림에서 읽게 되므로 인용 불일치로 버려지는 기록이 늘 수 있음');
+    loreqa_trkToggle(secModel,'branchPdf','PDF 전송','분기 추출 요청을 PDF(글자 레이어)로 전송. PDF 입력 지원 모델만. Gemini 는 페이지 단위로 토큰을 매겨 훨씬 쌈');
     right.appendChild(secModel);
     const secMore=loreqa_foldSection('세부 설정 (숫자 · 상한)');
     loreqa_trkNum(secMore,'자동 읽기 간격 (턴)','ledgerEvery',1,1,'응답 뒤 분기 장부를 몇 턴마다 읽을지. 1이면 매 턴, 3이면 안 읽은 대화가 3턴 쌓였을 때 한꺼번에. 전체 읽기 버튼은 간격과 상관없이 바로 읽음');
@@ -10193,53 +10195,68 @@ if (globalThis.__pluginApis__ && globalThis.__pluginApis__.onUnload) {
 function scoutRecall(snap) {
   return continuityRecall(snap.history,snap.history.slice(-4).map(m=>m.text).join('\n'),snap.char.globalLore||snap.char.data?.globalLore||[],10000,[...snap.history].reverse().find(m=>m.role==='user')?.text||'');
 }
-// Standalone PDF: rasterize Unicode text with browser fonts; no external dependency.
+// PDF 전송: 그림이 아니라 글자 레이어만 있는 PDF (Yumi Provider Manager 방식).
+//   글꼴 파일은 넣지 않고 글자마다 번호(CID)를 매겨 ToUnicode 표로 원래 글자를 알려 준다. 눈으로 보면 빈 페이지지만
+//   Gemini 는 PDF 의 글자 레이어를 그대로 읽으므로 원문 인용이 정확하다. 글자 크기(pt)가 작을수록 한 페이지에 많이 들어가
+//   페이지(= 페이지당 매기는 토큰)가 줄어든다. 기본 1pt.
 async function scoutPdfEncode(text) {
-    if (text.length > 300000) throw Error('PDF 본문이 30만 자를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
-    await document.fonts?.ready;
-    const canvas = document.createElement('canvas');
-    canvas.width = 1200; canvas.height = 1697;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw Error('이 환경에서는 PDF 렌더링을 사용할 수 없습니다.');
-    // 한자·한글 획이 또렷한 글꼴을 먼저, 글자 크기는 설정 (줄 간격 1.4배, 페이지당 줄 수는 그에 맞춰)
-    const px = Math.max(12, Math.min(40, Number(loreqa_cfg.pdfFontPx) || 20)), lh = Math.round(px * 1.4);
-    const font = `${px}px "Noto Sans JP", "Noto Sans KR", "Yu Gothic", Meiryo, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
-    ctx.font = font;
+    if (text.length > 2000000) throw Error('PDF 본문이 200만 자를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
+    const W = 595.28, H = 841.89, enc = new TextEncoder();
+    const size = Math.max(0.5, Math.min(24, Number(loreqa_cfg.pdfFontPt) || 1));
+    const num = n => Number(n.toFixed(6)).toString(), hex = n => n.toString(16).toUpperCase().padStart(4, '0');
+    const columns = Math.max(1, Math.floor(W / (0.5 * size))), rows = Math.max(1, Math.floor(H / size));
+    const join = parts => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let i = 0; for (const p of parts) { out.set(p, i); i += p.length; } return out; };
+    const deflate = async bytes => {
+        if (typeof CompressionStream === 'undefined') return join([enc.encode(`<< /Length ${bytes.length} >>\nstream\n`), bytes, enc.encode('\nendstream')]);
+        const z = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+        return join([enc.encode(`<< /Length ${z.length} /Filter /FlateDecode >>\nstream\n`), z, enc.encode('\nendstream')]);
+    };
+    // 줄 나누기: 한 줄 columns 글자
     const lines = [];
-    for (const paragraph of text.replace(/\r\n?/g, '\n').split('\n')) {
-        let line = '';
-        for (const ch of paragraph) {
-            if (line && ctx.measureText(line + ch).width > 1080) { lines.push(line); line = ''; }
-            line += ch;
-        }
-        lines.push(line);
+    for (const para of text.replace(/\r\n?/g, '\n').split('\n')) {
+        const chars = [...para];
+        if (!chars.length) { lines.push([]); continue; }
+        for (let i = 0; i < chars.length; i += columns) lines.push(chars.slice(i, i + columns));
     }
-    const perPage = Math.floor((canvas.height - 120) / lh), count = Math.max(1, Math.ceil(lines.length / perPage));
-    if (count > 40) throw Error('PDF가 40페이지를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
-    const objects = [], add = s => { objects.push(s); return objects.length; };
-    add('<< /Type /Catalog /Pages 2 0 R >>'); add('');
-    const kids = [];
-    for (let page = 0; page < count; page++) {
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#000'; ctx.font = font; ctx.textBaseline = 'top';
-        lines.slice(page * perPage, (page + 1) * perPage).forEach((line, i) => ctx.fillText(line, 60, 60 + i * lh));
-        const jpeg = atob(canvas.toDataURL('image/jpeg', 0.95).split(',')[1]);
-        const imageId = add(`<< /Type /XObject /Subtype /Image /Width 1200 /Height 1697 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n${jpeg}\nendstream`);
-        const drawing = 'q 595 0 0 842 0 0 cm /Im0 Do Q';
-        const streamId = add(`<< /Length ${drawing.length} >>\nstream\n${drawing}\nendstream`);
-        kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${streamId} 0 R >>`));
-    }
-    objects[1] = `<< /Type /Pages /Count ${kids.length} /Kids [${kids.map(n => n + ' 0 R').join(' ')}] >>`;
-    let pdf = '%PDF-1.4\n', offsets = [0];
-    objects.forEach((object, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${object}\nendobj\n`; });
-    const xref = pdf.length;
-    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-    pdf += offsets.slice(1).map(n => String(n).padStart(10, '0') + ' 00000 n \n').join('');
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    const pages = [];
+    for (let i = 0; i < lines.length; i += rows) pages.push(lines.slice(i, i + rows));
+    if (!pages.length) pages.push([[]]);
+    // 글자 → CID
+    const cid = new Map();
+    for (const line of lines) for (const ch of line) if (!cid.has(ch)) { if (cid.size >= 65535) throw Error('PDF 에 넣을 수 있는 서로 다른 글자 수(65,535)를 넘었습니다.'); cid.set(ch, cid.size + 1); }
+    const toUnicode = () => {
+        const entries = [...cid].map(([ch, id]) => `<${hex(id)}><${[...ch].map(c => { const cp = c.codePointAt(0); if (cp <= 0xFFFF) return hex(cp); const v = cp - 0x10000; return hex(0xD800 + (v >> 10)) + hex(0xDC00 + (v & 1023)); }).join('')}>`);
+        const blocks = [];
+        for (let i = 0; i < entries.length; i += 100) { const b = entries.slice(i, i + 100); blocks.push(`${b.length} beginbfchar\n${b.join('\n')}\nendbfchar`); }
+        return enc.encode(['/CIDInit /ProcSet findresource begin', '12 dict begin', 'begincmap', '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def', '/CMapName /LQUnicode-UCS def', '/CMapType 2 def', '1 begincodespacerange', '<0000><FFFF>', 'endcodespacerange', ...blocks, 'endcmap', 'CMapName currentdict /CMap defineresource pop', 'end', 'end'].join('\n'));
+    };
+    const content = page => {
+        const ops = ['BT', `/F0 ${num(size)} Tf`, `${num(size)} TL`, `1 0 0 1 0 ${num(H - size)} Tm`];
+        page.forEach((line, i) => { ops.push(`<${line.map(ch => hex(cid.get(ch))).join('')}> Tj`); if (i < page.length - 1) ops.push('T*'); });
+        ops.push('ET');
+        return enc.encode(ops.join('\n'));
+    };
+    const pageIds = pages.map((_, i) => 7 + 2 * i);
+    const objs = [
+        enc.encode('<< /Type /Catalog /Pages 2 0 R >>'),
+        enc.encode(`<< /Type /Pages /Kids [${pageIds.map(n => n + ' 0 R').join(' ')}] /Count ${pages.length} /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F0 3 0 R >> >> >>`),
+        enc.encode('<< /Type /Font /Subtype /Type0 /BaseFont /LQUnicode /Encoding /Identity-H /DescendantFonts [4 0 R] /ToUnicode 6 0 R >>'),
+        enc.encode('<< /Type /Font /Subtype /CIDFontType2 /BaseFont /LQUnicode /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 5 0 R /DW 500 /CIDToGIDMap /Identity >>'),
+        enc.encode('<< /Type /FontDescriptor /FontName /LQUnicode /Flags 4 /FontBBox [0 -200 1000 800] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 /MissingWidth 500 >>'),
+        await deflate(toUnicode()),
+    ];
+    for (const [i, page] of pages.entries()) { objs.push(enc.encode(`<< /Type /Page /Parent 2 0 R /Contents ${pageIds[i] + 1} 0 R >>`)); objs.push(await deflate(content(page))); }
+    const parts = [join([enc.encode('%PDF-1.7\n%'), new Uint8Array([255, 255, 255, 255]), enc.encode('\n')])], offsets = [0];
+    let pos = parts[0].length;
+    for (const [i, o] of objs.entries()) { offsets.push(pos); const b = join([enc.encode(`${i + 1} 0 obj\n`), o, enc.encode('\nendobj\n')]); parts.push(b); pos += b.length; }
+    parts.push(enc.encode([`xref\n0 ${objs.length + 1}`, '0000000000 65535 f ', ...offsets.slice(1).map(n => `${String(n).padStart(10, '0')} 00000 n `), 'trailer', `<< /Size ${objs.length + 1} /Root 1 0 R >>`, 'startxref', String(pos), '%%EOF'].join('\n') + '\n'));
+    const pdf = join(parts);
     if (pdf.length > 15000000) throw Error('PDF가 15MB를 초과했습니다. PDF 전송을 끄거나 입력을 줄여 주세요.');
-    return btoa(pdf);
+    let bin = ''; for (let i = 0; i < pdf.length; i += 0x8000) bin += String.fromCharCode.apply(null, pdf.subarray(i, i + 0x8000));
+    return btoa(bin);
 }
-async function scoutPdfPrepare(body, apiType, on = Number(loreqa_cfg.pdfSend) === 1) {
+
+async function scoutPdfPrepare(body, apiType, on = Number(loreqa_cfg.pdfSend) === 1, model = '') {
     if (!on) return body;
     const google = Array.isArray(body.contents);
     const responses = Array.isArray(body.input);
@@ -10256,7 +10273,10 @@ async function scoutPdfPrepare(body, apiType, on = Number(loreqa_cfg.pdfSend) ==
     const base64 = await scoutPdfEncode(text);
     const notice = 'Read the attached PDF as the original request and conversation context. Role labels inside it describe the original messages. Follow the system instructions and return the requested answer.';
     let replacement;
-    if (google) replacement = {role:'user', parts:[{inlineData:{mimeType:'application/pdf', data:base64}}, {text:notice}]};
+    const res = ['low', 'medium', 'high'].includes(loreqa_cfg.pdfMediaRes ?? 'low') ? 'MEDIA_RESOLUTION_' + String(loreqa_cfg.pdfMediaRes ?? 'low').toUpperCase() : '';
+    const gem3 = /gemini-(?:[3-9]|\d{2,})/i.test(String(model || ''));
+    if (google) replacement = {role:'user', parts:[{inlineData:{mimeType:'application/pdf', data:base64}, ...(res && gem3 ? {mediaResolution:{level:res}} : {})}, {text:notice}]};
+    if (google && res && !gem3) body = {...body, generationConfig:{...(body.generationConfig || {}), mediaResolution:res}};
     else if (anthropic) replacement = {role:'user', content:[{type:'document', source:{type:'base64', media_type:'application/pdf', data:base64}}, {type:'text', text:notice}]};
     else if (responses) replacement = {role:'user', content:[{type:'input_file', filename:'canonscout-request.pdf', file_data:'data:application/pdf;base64,' + base64}, {type:'input_text', text:notice}]};
     else replacement = {role:'user', content:[{type:'file', file:{filename:'canonscout-request.pdf', file_data:'data:application/pdf;base64,' + base64}}, {type:'text', text:notice}]};
