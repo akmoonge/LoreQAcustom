@@ -137,7 +137,11 @@ comments are Korean.
   web search, reads no chat turns, only position + ledger): `[PUBLIC]` = what ORIGINAL characters /
   factions are doing now (never the story's own characters' whereabouts: those change scene by
   scene), `[HIDDEN]` = one-line secrets, `[BEATS]` = next original events as
-  "event / needs: condition" (+ "(broken: …)"). Stored as `byPos[key].world` {raw,pub,hidden,beats,v,n,nb,
+  "event / at: place / present: people / then: canon outcome" (+ "(broken: …)"; old "/ needs:" still parsed).
+  `[NOW]` comes first (last event done | next: first event not done) and the order is NOW, BEATS,
+  PUBLIC, HIDDEN, so HIDDEN is written after BEATS and can avoid them. READY needs the beat's
+  "present" people in the current scene (off-screen events never READY); "then:" is injected only
+  for follow / canon stances. Stored as `byPos[key].world` {raw,pub,hidden,beats,v,n,nb,
   divN}; regenerated on position / ledger-count / `worldCount` / `beatCount` change.
   The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
   prompt: an old saved prompt produced tables without [BEATS]); the parser accepts [TAG], 【TAG】, TAG:.
