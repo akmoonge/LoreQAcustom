@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.6
+//@version 3.3.7
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.6';
+const LOREQA_VER = '3.3.7';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7311,7 +7311,7 @@ INPUT: "messages" (the new story messages, each with its index), "ledger" (the r
 A. A writer who assumes the original plus the persona would get it wrong.
 B. It is true now and a later scene depends on it. A finished episode, a trip, a meal, a fight or who was present is not a record; its lasting result can be.
 C. What changed, or what it affects, is a character, group, place, object or event of the original. A canon character who only talks, tells, watches or is present does not make it count. People, places, groups and plans invented by this story, and anything only among them, are never recorded (except the player character's slots, section 3). A generic word (bandits, demon slayers, a magistrate, villagers) means something invented unless the story clearly means the original's specific group.
-Never record: an event of the original that happens as written, even with the player character there or helping; moods and reactions in a scene; plans, rumours, suspicions and predictions; a state that ends within the scene.
+Never record: an event of the original that happens with the same outcome, even with the player character there or helping (her being one more person present, helping or riding along is not a change: never write "in the original only A and B did it"); moods and reactions in a scene; plans, rumours, suspicions and predictions; a state that ends within the scene or the arc (where someone is right now, what they hold, a bruise, getting back to a room).
 
 2. KINDS OF RECORD
 - A canon character's changed situation: alive or dead, lasting injury, where they live or are held, side or group, items or abilities, aims.
@@ -7321,11 +7321,11 @@ Never record: an event of the original that happens as written, even with the pl
 
 3. PLAYER CHARACTER SLOTS (entity = player_character; set "slot"; no canon element needed; record only what the story changed or added to the persona, never copy the persona)
 - party: which group she travels with, or alone. One record.
-- home: where she lives, who is her guardian. One record.
+- home: where she lives, who is her guardian. One record. Not whom she travels with (that is party).
 - standing: the name she is known by, her reputation, rank. One record.
 - items: each item she obtained, or ability she newly gained, in the story, one record each. Not her own techniques or powers that she simply uses (those belong to the persona), even when the story names them for the first time. Keep the same dimension when the item is later named (put the name in "after"). An item used up, given away or melted into another is rewritten to say so.
-- condition: each lasting injury, curse or illness. Rewrite it when it ends.
-- secrets: a hidden truth of the original she has learned, one that most characters do not know and that changes what she can do (who someone really is, who is behind something, what someone secretly wants). Not ordinary events she heard about (a sealing, an awakening, a battle, someone's past, how a weapon works), not where people are going, and nothing about people or plans invented by the story. Usually only a few. The dimension names the fact itself (who wants what, who is really who), not just its topic, so that two facts about the same person or object stay two records.
+- condition: each lasting injury, curse or illness that outlasts the current arc. Rewrite it when it ends.
+- secrets: a hidden truth of the original she has learned, one that most characters do not know and that changes what she can do (who someone really is, who is behind something, what someone secretly wants). Not what the persona already says she knows (her own family and origin as the persona states them), not ordinary events or someone's life story she heard about (a sealing, an awakening, a battle, a childhood, how a weapon works, that a famous monster exists), not where people are going, and nothing about people or plans invented by the story. Usually only a few. The dimension names the fact itself (who wants what, who is really who), not just its topic, so that two facts about the same person or object stay two records.
 - promises: each promise, debt or goal that involves a canon character. Rewrite it when kept or dropped.
 Where she is, whom she travels with and what she carries are written only here, never in canon characters' records.
 
