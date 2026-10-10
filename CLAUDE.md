@@ -124,7 +124,9 @@ comments are Korean.
   original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
   wording ("if no specific fact is broken, use ''") left every relationship record empty. Then every record repeated the same
   premise ("Izayoi's only child is Inuyasha") into the main block: now a premise is stated once, other records give
-  only what they overturn beyond it (tidy dedupes too).
+  only what they overturn beyond it (tidy dedupes too). "after" (locked) = the current state in one or two sentences, no scene
+  details (blushing, smiles, smells); an update carries over what is still true from the record it replaces. Same
+  entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy merges them.
 - NAMES (locked, extract + tidy): one spelling/script per person, copied from the ledger or as the story writes it,
   never romanized; dimensions in the record language (the English "relationship with <name>" template produced
   "knowledge of Sayo" next to 「小夜」).
