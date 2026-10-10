@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.9
+//@version 3.3.10
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.9';
+const LOREQA_VER = '3.3.10';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7315,7 +7315,7 @@ Never record: an event of the original that happens with the same outcome, even 
 
 2. KINDS OF RECORD
 - A canon character's changed situation: alive or dead, lasting injury, where they live or are held, side or group, items or abilities, aims.
-- Knowledge: a canon character knows something they do not know in the original (who the player character is to them, a secret, or what she can do because they saw it: her strength, a power or technique, that she has killed). Record what they saw only when it changes how they will deal with her later; the technique itself is not her record. Only what they know; feelings go in the relationship record.
+- Knowledge: a canon character knows something they do not know in the original (who the player character is to them, a secret, or what she can do because they saw it: her strength, a power or technique, that she has killed). Record what they saw only when it changes how they will deal with her later; the technique itself is not her record. Minor things about her (her money, her fears, a habit) are not knowledge records, and a belief or suspicion is not one until it is confirmed: when it is, update the same record. Only what they know; feelings go in the relationship record.
 - Relationship: how a canon character and the player character treat each other now, in both directions (trust, fear, contempt, affection, rivalry, accepting her as family; what each calls the other). One record per canon character, with a dimension meaning "relationship with <player character>". Update it whenever the relationship has moved on from the ledger's version, even by a small step. Time spent together is not a record; the change in feelings is.
 - A changed event of the original: it ended differently, did not happen, or something happened that the original never has and later scenes must respect.
 
