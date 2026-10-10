@@ -1,0 +1,9 @@
+# 테스트 자료 (채팅 로그 · 페르소나 · 장부 내보내기) — 개인 데이터, 올리지 않음
+testdata/
+*.json
+*_chat.txt
+verify-*.md
+# 참고용 원본 플러그인
+CanonScout_1.3_majorcriteria.js
+provider-manager-*.js
+📕원작견*.js
