@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.12
+//@version 3.3.13
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.12';
+const LOREQA_VER = '3.3.13';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7653,7 +7653,7 @@ function loreqa_posKey(label) {
     if (nums && nums.length) return 'n:' + nums.join('.');
     return 't:' + head.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 80);
 }
-const loreqa_posCleanLabel = label => String(label || '').replace(LOREQA_GUESS_RE, ' ').replace(/\s+/g, ' ').trim();
+const loreqa_posCleanLabel = label => String(label || '').replace(/\s*\[?PerQueryResult\b[\s\S]*$/, '').replace(LOREQA_GUESS_RE, ' ').replace(/\s+/g, ' ').trim();
 function loreqa_posBucket(st, key, label) {
     if (!st.byPos[key]) st.byPos[key] = { label: label || key, secrets: '', qa: [] };
     return st.byPos[key];
@@ -7767,7 +7767,7 @@ let loreqa_worldErr = '';
 let loreqa_worldNote = ''; // 생성은 됐지만 원작 비트가 빈 경우의 안내
 // played: 이 위치에서 이미 이야기에서 일어난 원작 비트 (다시 만들 때 빼라고 알려 줌)
 async function loreqa_generateWorld(label, divergences, played = []) {
-    const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
+    const lang = loreqa_storyLang || scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
     const mediumName = { novel: 'the original novels', manga: 'the original manga', webnovel: 'the original web novel', anime: 'the anime TV series', drama: 'the live-action series', game: 'the game' }[loreqa_cfg.canonMedium] || 'the medium that current_point is counted in (volume / chapter numbers mean the manga or novels, not the anime)';
     const vars = { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, mediumName, language: lang };
     const system = loreqa_prompt('world', vars, false) + '\n\n' + LOREQA_WORLD_FORMAT.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vars ? String(vars[k]) : m) + await loreqa_flowOcRule();
@@ -7795,7 +7795,7 @@ async function loreqa_generateWorld(label, divergences, played = []) {
 //   전개모드 API (추론은 그 프로필 설정), 검색 없음. 장면과 조건을 맞춰 보는 판단이라 감지용 가벼운 모델에 맡기지 않는다.
 //   원작 비트는 끌어당기는 정보라 메인 모델에 다 넣고 거르게 하면 조건이 안 맞아도 끌어온다. 여기서 먼저 거른다.
 // 장면 판단 잠금 부분: 세계 상태 중 지금 장면에 들어와 있는 인물·세력의 줄 (메인 모델에 '화면 밖'으로 넣지 않는다)
-const LOREQA_SCENE_ONSCREEN = 'Also answer one more line, after the others:\nONSCREEN: numbers of world_state lines about a character or group that is in the current scene of the story (or arriving in it right now), so that line\'s off-screen whereabouts are wrong for this story, or NONE. Judge from recent_story, not from the original. A group counts when its members in that line are with the story\'s characters now.';
+const LOREQA_SCENE_ONSCREEN = 'Write PLACE and PRESENT in the language of recent_story, with names exactly as the story writes them. Also answer one more line, after the others:\nONSCREEN: numbers of world_state lines about a character or group that is in the current scene of the story (or arriving in it right now), so that line\'s off-screen whereabouts are wrong for this story, or NONE. Judge from recent_story, not from the original. A group counts when its members in that line are with the story\'s characters now.';
 async function loreqa_judgeScene(W, snap, divergences, played) {
     const limit = Math.max(1, Number(loreqa_cfg.sceneSecretMax) || 4);
     const beats = (W.beats || []).filter(b => !played.includes(b.text));
@@ -7870,11 +7870,14 @@ async function loreqa_detectTimeJump(snap, label) {
     } catch (e) { loreqa_stat('jump.fail'); console.warn('[LoreQA] 시간 점프 감지 실패:', e?.message || e); return none; }
 }
 // 요청 직전: 분기 기록 읽기 → 시간 점프·장면 바뀜 감지 → (위치·분기가 바뀌었으면) 세계 상태표 생성 → (장면이 바뀌었으면) 장면 판단
+let loreqa_storyLang = ''; // 마지막으로 본 이야기의 언어 (scoutStoryLanguage)
 async function loreqa_prepareTurn() {
     // divergences: 보조 모델용 (최신 helperDivMax 개). allDivergences: 메인 후보용 전체 — ★ 우선이 오래된 ★를 잃지 않게
     const t = { scope: '', pos: null, guard: '', guide: '', divergences: [], allDivergences: [], fixed: '', bucket: '_' };
     let snap;
     try { snap = await scoutSnapshot(); t.scope = snap.scope; } catch (e) { return t; }
+    // 이야기 언어: 세계 상태표 · 장면 판단은 출력 언어(사람이 읽는 말)가 아니라 이야기 언어로 쓴다 (이름이 장부·이야기와 맞아야 함)
+    try { loreqa_storyLang = scoutStoryLanguage(snap.history.slice(-6)); } catch (e) {}
     const cfg = loreqa_cfg;
     if (loreqa_branchOn('compLedger')) {
         t.fixed = loreqa_capStr(String(cfg.scoutFactsByScope?.[t.scope] || '').trim(), 'fixedChars');
