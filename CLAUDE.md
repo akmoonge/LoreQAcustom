@@ -126,7 +126,10 @@ comments are Korean.
   premise ("Izayoi's only child is Inuyasha") into the main block: now a premise is stated once, other records give
   only what they overturn beyond it (tidy dedupes too). "after" (locked) = the current state in one or two sentences, no scene
   details (blushing, smiles, smells); an update carries over what is still true from the record it replaces. Same
-  entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy merges them.
+  entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest). Tidy (locked)
+  must merge them, following the newest where they differ (a merge once kept "still travelling together" after she
+  left), and single-record-rewrites scene-heavy "after" / repeated premises; any same-key group the model leaves is
+  cut to the newest in code (`scoutLedgerTidyWork`, reason '같은 항목의 더 최근 기록이 대신함').
 - NAMES (locked, extract + tidy): one spelling/script per person, copied from the ledger or as the story writes it,
   never romanized; dimensions in the record language (the English "relationship with <name>" template produced
   "knowledge of Sayo" next to 「小夜」).
