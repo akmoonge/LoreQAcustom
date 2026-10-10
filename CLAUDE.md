@@ -177,7 +177,9 @@ comments are Korean.
   `ledgerDeferLatest` (default on): `scoutCompleted` stops before the newest reply, so it is read
   next turn, after GigaTrans / status-panel / illustration plugins have rewritten it. Reconcile
   only logs a rewind when a message really changed (a shorter readable range is trimmed quietly).
-- Branch PDF toggle exists, but PDF renders text as images, so quote matching suffers.
+- Branch PDF toggle exists, but PDF renders text as images, so quotes come back with OCR-like typos (結界→結果,
+  stray characters) and were all rejected. `scoutQuoteFuzzy` now accepts a quote whose nearest same-length span
+  (anchored on an exact 8-char piece) is ≥ 85% identical by edit distance, and stores the original text's span.
 
 ### Position (전개모드)
 

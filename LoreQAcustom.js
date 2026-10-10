@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.51
+//@version 3.2.52
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -8868,6 +8868,23 @@ function scoutLedgerReconcile(ledger,messages){
     ledger.hashes=ledger.hashes.slice(0,common);return true;
 }
 // 인용 비교용 정규화: 따옴표 모양·말줄임표·줄바꿈/공백 차이만 무시한다. 내용이 다르면 여전히 불일치.
+// 원문에서 인용과 거의 같은 구간을 찾는다 (글자 85% 이상 일치). 찾으면 원문 그대로의 구간을 돌려준다
+function scoutQuoteFuzzy(text,quote){
+    const T=scoutQuoteNorm(text),Q=scoutQuoteNorm(quote);if(Q.length<12||!T)return '';
+    // 인용 속 8글자 조각이 원문에 그대로 있는 자리를 실마리로, 그 주변 같은 길이 구간과 편집 거리를 잰다
+    const dist=(a,b)=>{let prev=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){const cur=[i];for(let j=1;j<=b.length;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur;}return prev[b.length];};
+    let best='',bestScore=0;const tried=new Set();
+    for(let k=0;k+8<=Q.length;k+=4){
+        const at=T.indexOf(Q.slice(k,k+8));if(at<0)continue;
+        const start=Math.max(0,at-k);if(tried.has(start))continue;tried.add(start);
+        for(const len of [Q.length,Math.round(Q.length*0.95),Math.round(Q.length*1.05)]){
+            const w=T.slice(start,start+len),score=1-dist(Q,w)/Math.max(Q.length,w.length);
+            if(score>bestScore){bestScore=score;best=w;}
+        }
+        if(tried.size>=6)break;
+    }
+    return bestScore>=0.85?best:'';
+}
 const scoutQuoteNorm=t=>String(t||'').normalize('NFKC').replace(/[“”„‟«»]/g,'"').replace(/[‘’‚‛]/g,"'").replace(/…/g,'...').replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();
 function scoutLedgerValidate(raw,batch,start,ledger,opts={}){
     const lenient=!!opts.lenient;
@@ -8891,9 +8908,11 @@ function scoutLedgerValidate(raw,batch,start,ledger,opts={}){
         for(const v of (lenient?e.evidence.slice(0,4):e.evidence)){
             const ok=(m,q)=>m&&(m.text.includes(q)||(lenient&&scoutQuoteNorm(m.text).includes(scoutQuoteNorm(q))));
             let source=batch.find(m=>m.index===v?.index);
-            const q=typeof v?.quote==='string'?v.quote:'';
+            let q=typeof v?.quote==='string'?v.quote:'';
             // 번호만 잘못 단 경우: 같은 묶음의 다른 메시지에서 그 인용을 찾는다
             if(lenient&&q&&!ok(source,q))source=batch.find(m=>ok(m,q))||source;
+            // 그래도 안 맞으면 거의 같은 구간을 원문에서 찾아 그 글자로 바꾼다 (PDF 로 읽은 인용의 오탈자)
+            if(lenient&&q&&!ok(source,q)){for(const m of [source,...batch.filter(x=>x!==source)]){if(!m)continue;const fz=scoutQuoteFuzzy(m.text,q);if(fz){source=m;q=fz;break;}}}
             if(!source||(!lenient&&!Number.isInteger(v.index))||q.length<(lenient?6:12)||q.length>600||!ok(source,q)){if(lenient)continue;throw Error('중대 분기 원문 인용 불일치');}
             if(source.index>=start&&['char','assistant'].includes(source.role))confirmed=true;
             ev.push({index:source.index,quote:q,hash:scoutMessageHash(source)});
