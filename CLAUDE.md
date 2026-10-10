@@ -63,7 +63,9 @@ comments are Korean.
   Risu's main page via `risuai.getRootDocument()` (`.loreqa-float`, fixed, pointer-events none),
   like provider-manager's floating window. No streaming: running time, then output / thinking
   tokens and t/s. Settings `floatOn`, `floatPos` (default bottom-right: Yumi Provider Manager uses
-  top-right). Pass `step:` when adding a new helper call.
+  top-right). Cards take the pointer and can be dragged (listeners on
+  the persistent `.loreqa-float`, body pointermove only while dragging) → `floatPos` "custom" + `floatXY`.
+  Pass `step:` when adding a new helper call.
 - Usage stats (`loreqacustom_stats`, no chat text / work title / keys / model names):
   `loreqa_stat(key, n)`, `loreqa_statTime(key, ms)`, `loreqa_statUsage(prefix, usage)`; hooks in
   position judge (reason + changed/same), time-jump, ledger extract/audit/batch/added/rewind, tidy,
@@ -75,7 +77,8 @@ comments are Korean.
 - Settings window: default `min(1120px, 96vw)` × 86vh; bottom-right grip resizes it (the plugin
   iframe is spread full-screen while resizing, then re-fitted; size in `windowSize`). Text size
   `uiScale` (%, default 115) is CSS `zoom` on the tabs and body only, so the window rect and the
-  iframe passthrough stay in pixels.
+  iframe passthrough stay in pixels. The saved size is not clamped when the hidden plugin frame reports a
+  0-wide window at build time (that used to reset it to the minimum).
 - Settings UI layout in each mode tab: frequently used toggles first, then small topic sections
   (모델 · 검색/첨부, 캐릭터 & 보정, 시간 점프), and numbers / caps last in a collapsed
   `loreqa_foldSection('세부 설정 (숫자 · 상한)')`. New number settings go in that fold.

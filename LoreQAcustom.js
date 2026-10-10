@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.20
+//@version 3.2.21
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -20,6 +20,7 @@ const LOREQA_DEFAULTS = {
     windowSize: null,  // 설정창 크기 { w, h } (오른쪽 아래 손잡이로 조절)
     floatPos: 'br',    // 진행 상황 창 위치: tr | br | tl | bl (오른쪽 위는 Yumi Provider Manager 창 자리)
     floatPosV: 1,      // 1 = 위치 기본값을 오른쪽 아래로 옮긴 뒤
+    floatXY: null,     // 진행 상황 창을 끌어서 옮긴 위치 { x, y } (floatPos = 'custom')
     activePrev: 1,     // 머리의 '전체 ON/OFF'로 끄기 전 active 값 (다시 켤 때 복원)
     onlyCharName: '',  // active=3 ('현재 봇에서만') 에 바인딩된 캐릭터 이름
     onlyChatScope: '', // active=4 ('현재 채팅에서만') 에 바인딩된 캐릭터 id/채팅 id. 브랜치·복사본은 채팅 id가 달라 꺼진 채로 시작
@@ -446,7 +447,7 @@ async function loreqa_saveSavedLores() {
 const LOREQA_PRESET_EXCLUDE = new Set([
     'pdfSend', 'apiType', 'apiProfiles', 'verifySameModel', 'verifyApiType', 'verifyApiProfiles',
     'mcpMaster', 'mcpSearch', 'verifyMcpSearch', 'mcpSearchApiType', 'mcpMaxChars', 'mcpUseNamuwiki',
-    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'floatPosV', 'uiScale', 'windowSize', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
+    'onlyChatScope', 'onlyChatLabel', 'envCtx', 'envPrompt', 'envOut', 'envIn', 'envLang', 'envRule', 'floatOn', 'floatPos', 'floatPosV', 'floatXY', 'uiScale', 'windowSize', 'mcpOneQueryPerCall', 'includeMcpInLore', 'mcpIncludeChatlog', 'mcpPromptMode', 'mcpSearchApiProfiles',
     'copilotRetries', 'transientRetries', 'hotkey', 'scoutHotkey', 'windowPos', 'activePresetId', 'uiTab',
     'compMigrated', 'modeMigrated', 'savedLoreMigrated', 'flowMigrated', 'scoutFactsByScope', 'knownGroups', 'rewrite', 'pipeline', 'scoutLanguage', 'scoutSkipAuditInBoth',
 ]);
@@ -1308,7 +1309,9 @@ async function loreqa_openSettingsWindow() {
     container.id = LOREQA_CONTAINER_ID;
     loreqa_applyWindowPos(container, LOREQA_CONTAINER_ID);
     // 저장된 창 크기 (화면보다 크면 줄임) · 글자 크기
-    { const z = loreqa_cfg.windowSize; if (z && z.w > 0 && z.h > 0) { container.style.width = Math.min(z.w, Math.max(480, window.innerWidth - 16)) + 'px'; container.style.height = Math.min(z.h, Math.max(320, window.innerHeight - 16)) + 'px'; } }
+    //   창을 여는 순간에는 플러그인 화면이 아직 숨겨져 있어 화면 너비가 0으로 읽힌다. 그 값으로 줄이면 저장한 크기가 최소 크기로 돌아가므로,
+    //   화면 크기를 제대로 읽을 수 있을 때만 줄인다.
+    { const z = loreqa_cfg.windowSize; if (z && z.w > 0 && z.h > 0) { const vw = window.innerWidth, vh = window.innerHeight; container.style.width = (vw > 400 ? Math.min(z.w, vw - 16) : z.w) + 'px'; container.style.height = (vh > 300 ? Math.min(z.h, vh - 16) : z.h) + 'px'; container.style.maxHeight = 'none'; } }
     container.style.setProperty('--loreqa-zoom', String((Number(loreqa_cfg.uiScale) || 115) / 100));
 
     // ── 헤더 (드래그) ──
@@ -1590,7 +1593,7 @@ async function loreqa_openSettingsWindow() {
     secBasic.appendChild(loreqa_createRow('창 크기 되돌리기', loreqa_btn('기본 크기로', async () => { loreqa_cfg.windowSize = null; await loreqa_saveConfig(); await loreqa_openSettingsWindow(); }), '끌어서 바꾼 창 크기를 처음 크기로'));
     // 진행 상황 창 (Risu 본 화면 구석)
     secBasic.appendChild(loreqa_createRow('진행 상황 창', loreqa_createToggle('loreqa-s-floatOn', Number(loreqa_cfg.floatOn ?? 1) === 1, async v => { loreqa_cfg.floatOn = v ? 1 : 0; await loreqa_saveConfig(); if (!v) loreqa_floatRemove(); }), '보조 모델 호출마다 단계 · 모델 · 경과 시간, 끝나면 출력·생각 토큰과 초당 토큰을 Risu 화면 구석에 잠깐 띄움. 처음 한 번 메인 화면 접근 권한을 물을 수 있음'));
-    secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }], loreqa_cfg.floatPos || 'br', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); }), '오른쪽 위는 Yumi Provider Manager 창과 겹칠 수 있음'));
+    secBasic.appendChild(loreqa_createRow('진행 상황 창 위치', loreqa_createSelect('loreqa-s-floatPos', [{ value: 'tr', label: '오른쪽 위' }, { value: 'br', label: '오른쪽 아래' }, { value: 'tl', label: '왼쪽 위' }, { value: 'bl', label: '왼쪽 아래' }, { value: 'custom', label: '끌어서 옮긴 자리' }], loreqa_cfg.floatPos || 'br', async v => { loreqa_cfg.floatPos = v; await loreqa_saveConfig(); }), '카드를 끌어서 원하는 자리로 옮길 수 있음 (옮긴 자리는 기억). 오른쪽 위는 Yumi Provider Manager 창과 겹칠 수 있음'));
 
     // 활성화 모드
     secBasic.appendChild(loreqa_createRow(
@@ -5698,7 +5701,9 @@ function loreqa_floatHtml() {
     const now = Date.now(), keepOk = 6000, keepErr = 12000;
     loreqa_float.calls = loreqa_float.calls.filter(c => !c.end || now - c.end < (c.ok ? keepOk : keepErr)).slice(-6);
     if (!loreqa_float.calls.length) return '';
-    const pos = { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'bottom:10px;right:10px';
+    const xy = loreqa_cfg.floatXY;
+    const pos = loreqa_cfg.floatPos === 'custom' && xy && Number.isFinite(xy.x) && Number.isFinite(xy.y) ? `left:${Math.max(0, Math.round(xy.x))}px;top:${Math.max(0, Math.round(xy.y))}px`
+        : { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'bottom:10px;right:10px';
     const card = c => {
         const sec = ((c.end || now) - c.start) / 1000;
         let line;
@@ -5708,7 +5713,7 @@ function loreqa_floatHtml() {
             const tps = c.out && sec > 0 ? ` · ${(c.out / sec).toFixed(0)} t/s` : '';
             line = `<span style="color:#a6e3a1">완료</span>${c.out != null ? `: 출력 ${c.out.toLocaleString()}토큰` : ''}${c.think != null ? ` (생각 ${c.think.toLocaleString()})` : ''} · ${sec.toFixed(1)}초${tps}`;
         }
-        return `<div style="background:rgba(17,17,27,.92);border:1px solid #313244;border-radius:8px;padding:6px 10px;color:#cdd6f4;font:12px/1.45 sans-serif;width:240px;box-shadow:0 2px 8px rgba(0,0,0,.35)">`
+        return `<div title="끌어서 옮기기" style="pointer-events:auto;cursor:move;user-select:none;touch-action:none;background:rgba(17,17,27,.92);border:1px solid #313244;border-radius:8px;padding:6px 10px;color:#cdd6f4;font:12px/1.45 sans-serif;width:240px;box-shadow:0 2px 8px rgba(0,0,0,.35)">`
             + `<div style="font-weight:600">LoreQA · ${loreqa_esc(c.step)}</div>`
             + `<div style="color:#a6adc8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${loreqa_esc(c.model)}${c.lv ? ' · 추론 ' + (LOREQA_REASON_LABEL[c.lv] || loreqa_esc(c.lv)) : ''}</div>`
             + `<div>${line}</div></div>`;
@@ -5730,9 +5735,38 @@ async function loreqa_floatRender() {
                 el = await doc.createElement('div'); await el.addClass(LOREQA_FLOAT_CLASS); await body.appendChild(el);
             }
             loreqa_float.el = el;
+            loreqa_floatDragSetup(doc, el).catch(() => {});
         } catch (e) { loreqa_float.denied = Date.now(); console.warn('[LoreQA] 진행 상황 창을 붙이지 못했습니다:', e?.message || e); return; }
     }
     try { await loreqa_float.el.setInnerHTML(html); } catch (e) { loreqa_float.el = null; }
+}
+// 끌어서 옮기기: 카드를 누르면 본 화면 body 에 잠깐 움직임 리스너를 달고, 놓으면 뗀다 (평소에는 이벤트가 오가지 않게).
+//   카드는 0.5초마다 다시 그려지므로 리스너는 바뀌지 않는 바깥 요소(.loreqa-float)에 단다 (카드의 누름이 거기까지 올라옴).
+async function loreqa_floatDragSetup(doc, el) {
+    if (typeof el.addEventListener !== 'function') return;
+    const body = await doc.querySelector('body');
+    let drag = null, moveId = null, upId = null;
+    const xyOf = ev => ({ x: Number(ev?.clientX ?? ev?.pageX), y: Number(ev?.clientY ?? ev?.pageY) });
+    const end = async () => {
+        if (!drag) return; drag = null;
+        try { if (moveId) await body.removeEventListener('pointermove', moveId); if (upId) await body.removeEventListener('pointerup', upId); } catch (e) {}
+        moveId = upId = null;
+        loreqa_saveConfig();
+    };
+    await el.addEventListener('pointerdown', async ev => {
+        const p = xyOf(ev); if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+        const stack = await el.querySelector('div'); if (!stack) return;
+        const r = await stack.getBoundingClientRect();
+        drag = { sx: p.x, sy: p.y, x: r.left, y: r.top };
+        moveId = await body.addEventListener('pointermove', mv => {
+            if (!drag) return;
+            const q = xyOf(mv); if (!Number.isFinite(q.x)) return;
+            loreqa_cfg.floatPos = 'custom';
+            loreqa_cfg.floatXY = { x: drag.x + q.x - drag.sx, y: drag.y + q.y - drag.sy };
+            loreqa_floatKick();
+        });
+        upId = await body.addEventListener('pointerup', end);
+    });
 }
 // 그리기는 한 줄로 세운다. 진행 중이거나 곧 사라질 카드가 있으면 0.5초마다 다시 그린다.
 function loreqa_floatKick() {
@@ -7564,7 +7598,7 @@ function loreqa_trueDivergences(projection) {
 //   [HIDDEN]  그중 일부 인물만 아는 것 → 장면마다 관련 있는 것만 골라 시점 가드로
 //   [BEATS]   다음 원작 사건 + 조건(needs) → 장면 판단이 조건이 맞는 것만 골라 원작 흐름 블록으로 (끌어오기 방지)
 //   원작의 '다음 사건'을 넘기면 메인 모델이 그 사건을 이야기 인물 앞으로 끌어온다. 상태로 넘기면 어디서 벌어지는지가 함께 간다.
-const LOREQA_WORLD_V = 3; // 2 = [BEATS] 추가, 3 = 출력 형식을 잠긴 부분으로 (고친 프롬프트로 만든 비트 없는 표를 한 번 다시 만듦)
+const LOREQA_WORLD_V = 4; // 2 = [BEATS] 추가, 3 = 출력 형식을 잠긴 부분으로 (고친 프롬프트로 만든 비트 없는 표를 한 번 다시 만듦)
 // 원작 흐름 성향 (서사 가이드). '끔'은 compGuide=0 으로 따로 둔다
 const LOREQA_STANCES = [
     ['follow', '원작 따라가기', 'stanceFollow'], ['canon', '원작 우선', 'stanceCanon'], ['balance', '균형', 'stanceBalance'],
@@ -7603,6 +7637,7 @@ const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given abov
 - Facts already true now that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 10.
   Only real secrets: skip mere unknown information (such as not knowing where something is). No motives, mechanics, weaknesses or future plans.
   Secrets created by the story count only if confirmed_changes state them; never invent new ones.
+  Do not put in [HIDDEN] a plan or step that [BEATS] lists as not happened yet, nor anything the original only develops later (such as someone slowly regaining memories, or a plan not yet set in motion).
 [BEATS] (REQUIRED: always write this section; it is the ONLY place for events that have not happened yet, so the "only what is true now" rules above do not apply to it)
 - The next major events of the ORIGINAL after this point, in order, at most {{beats}}. Format: "<what happens, who is involved> / needs: <who must be where, or what must be true, for it to happen>".
   Skip events listed in events_already_played (they already happened in this story).
