@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.55
+//@version 3.2.56
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.2.55';
+const LOREQA_VER = '3.2.56';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -10275,8 +10275,9 @@ async function scoutPdfPrepare(body, apiType, on = Number(loreqa_cfg.pdfSend) ==
     let replacement;
     const res = ['low', 'medium', 'high'].includes(loreqa_cfg.pdfMediaRes ?? 'low') ? 'MEDIA_RESOLUTION_' + String(loreqa_cfg.pdfMediaRes ?? 'low').toUpperCase() : '';
     const gem3 = /gemini-(?:[3-9]|\d{2,})/i.test(String(model || ''));
-    if (google) replacement = {role:'user', parts:[{inlineData:{mimeType:'application/pdf', data:base64}, ...(res && gem3 ? {mediaResolution:{level:res}} : {})}, {text:notice}]};
+    // (주의) 아래 if / else if 사슬 사이에 다른 if 를 끼우면 Gemini 요청이 마지막 else(OpenAI 형식)로 덮인다
     if (google && res && !gem3) body = {...body, generationConfig:{...(body.generationConfig || {}), mediaResolution:res}};
+    if (google) replacement = {role:'user', parts:[{inlineData:{mimeType:'application/pdf', data:base64}, ...(res && gem3 ? {mediaResolution:{level:res}} : {})}, {text:notice}]};
     else if (anthropic) replacement = {role:'user', content:[{type:'document', source:{type:'base64', media_type:'application/pdf', data:base64}}, {type:'text', text:notice}]};
     else if (responses) replacement = {role:'user', content:[{type:'input_file', filename:'canonscout-request.pdf', file_data:'data:application/pdf;base64,' + base64}, {type:'input_text', text:notice}]};
     else replacement = {role:'user', content:[{type:'file', file:{filename:'canonscout-request.pdf', file_data:'data:application/pdf;base64,' + base64}}, {type:'text', text:notice}]};
