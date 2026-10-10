@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.45
+//@version 3.2.46
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -3540,7 +3540,7 @@ async function loreqa_renderStatus() {
         const b = st.byPos[st.cur.key], W = b?.world, sc = b?.scene, played = Array.isArray(b?.played) ? b.played : [];
         const d = loreqa_el('details'); d.open = !W;
         d.appendChild(loreqa_el('summary', '', W ? `세계 상태표 — 공개 ${W.pub.length} · 숨은 ${W.hidden.length} · 원작 비트 ${(W.beats || []).length}${(W.beats || []).length ? '' : ' ⚠'} (수정 가능)` : '세계 상태표 — 다음 요청 때 생성됩니다'));
-        d.appendChild(loreqa_el('div', 'loreqa-muted', '[NOW] 는 이미 일어난 일과 아직 안 일어난 일의 경계, [PUBLIC] 은 화면 밖 원작 세계의 상태, [HIDDEN] 은 시점 가드 후보, [BEATS] 는 "사건 / at: 장소 / present: 함께 있어야 할 인물 / then: 원작 결말" 형식의 다음 원작 사건입니다. 장면이 바뀔 때마다 장면 판단이 지금 장면에 닿는 비밀과 조건이 맞는 비트만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
+        d.appendChild(loreqa_el('div', 'loreqa-muted', '[NOW] 는 이미 일어난 일과 아직 안 일어난 일의 경계, [PUBLIC] 은 화면 밖 원작 세계의 상태, [HIDDEN] 은 시점 가드 후보, [BEATS] 는 "(화) 사건 / at: 장소 / present: 함께 있어야 할 인물 / changed: 이 이야기에서 달라지는 점 / then: 원작 결말" 형식의 다음 원작 사건입니다. 장면이 바뀔 때마다 장면 판단이 지금 장면에 닿는 비밀과 조건이 맞는 비트만 골라 넣습니다. 각 줄은 "- " 로 시작.'));
         const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '180px'; area.value = W?.raw || '';
         const info = loreqa_el('div', 'loreqa-muted'); info.style.marginTop = '6px'; info.style.whiteSpace = 'pre-wrap';
         if (W) {
