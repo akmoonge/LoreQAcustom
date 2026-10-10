@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.10
+//@version 3.3.11
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.10';
+const LOREQA_VER = '3.3.11';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3581,7 +3581,7 @@ async function loreqa_renderStatus() {
                 e.target.disabled = true;
                 const div = await loreqa_helperDivergences(snap);
                 const s1 = await loreqa_posLoad(snap.scope), pl = s1.byPos[st.cur.key]?.played || [];
-                const fresh = await loreqa_generateWorld(st.cur.label, div, pl);
+                const fresh = await loreqa_generateWorld(st.cur.label, loreqa_divFor("world", div), pl);
                 if (!fresh) { say('✗ 세계 상태표 생성 실패: ' + (loreqa_worldErr || '빈 응답') + ' — 기존 표는 그대로 둡니다.'); return; }
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
                 bk.world = { ...fresh, divN: div.length }; delete bk.scene; await loreqa_posSave(snap.scope, s2);
@@ -7680,6 +7680,24 @@ function loreqa_stateKey(e) {
     if (sl && LOREQA_PC_SLOTS[sl].one) return ent + '\u0000#' + sl;
     return ent + '\u0000' + (sl ? '#' + sl + '\u0000' : '') + String(e.dimension).trim().toLowerCase();
 }
+// 보조 모델마다 장부에서 필요한 것만 넘긴다 (메인 모델은 전부). 상관없는 기록은 끌려가는 원인이 된다
+//   world: 플레이어 칸 빼고 (세계 상태표가 그녀의 위치·소지품을 쓰고 싶어진다) / scene: 플레이어 칸 중 동행만
+//   char: 지금 장면에 있는 인물의 기록 + 동행·이름 칸 (장면 판단의 PRESENT 로 고름. 모르면 플레이어 칸만 줄인다)
+//   set: 플레이어 칸 중 지닌 것·비밀만
+function loreqa_divFor(kind, list, present = '') {
+    const L = Array.isArray(list) ? list : [], sl = e => loreqa_slotOf(e);
+    if (kind === 'world') return L.filter(e => !sl(e));
+    if (kind === 'scene') return L.filter(e => !sl(e) || sl(e) === 'party');
+    if (kind === 'set') return L.filter(e => !sl(e) || sl(e) === 'items' || sl(e) === 'secrets');
+    if (kind === 'char') {
+        const pcKeep = e => ['party', 'standing'].includes(sl(e));
+        const names = String(present || '').split(/[,、，・\/]+/).map(x => x.trim()).filter(x => x.length > 1);
+        const inScene = e => names.some(n => String(e.entity).includes(n) || n.includes(String(e.entity)));
+        const keep = L.filter(e => sl(e) ? pcKeep(e) : inScene(e));
+        return names.length && keep.some(e => !sl(e)) ? keep : L.filter(e => !sl(e) || pcKeep(e));
+    }
+    return L;
+}
 // 같은 인물·항목은 가장 최근 상태 하나만 (예전 상태가 목록 자리를 차지하지 않게)
 function loreqa_latestStates(list) {
     const seen = new Set(), out = [];
@@ -7897,7 +7915,7 @@ async function loreqa_prepareTurn() {
             const divN = t.divergences.length, n = Number(cfg.worldCount) || 8, nb = Number(cfg.beatCount) || 5, w = bucket.world;
             if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || w.nb !== nb || (w.divN ?? -1) !== divN) && cfg.source) {
                 loreqa_stageSet({ pos: '✓', guide: '상태표 ⏳' });
-                const fresh = await loreqa_generateWorld(st.cur.label, t.divergences, played);
+                const fresh = await loreqa_generateWorld(st.cur.label, loreqa_divFor('world', t.divergences), played);
                 if (fresh) { bucket.world = { ...fresh, divN }; delete bucket.scene; dirty = true; }
             }
         }
@@ -7912,7 +7930,7 @@ async function loreqa_prepareTurn() {
             if (!bucket.scene || bucket.scene.gen !== gen || bucket.scene.w !== wsig || stale) {
                 if (needJudge) {
                     loreqa_stageSet({ guard: '장면 판단 ⏳' });
-                    const r = await loreqa_judgeScene(W, snap, t.divergences, played);
+                    const r = await loreqa_judgeScene(W, snap, loreqa_divFor('scene', t.divergences), played);
                     bucket.scene = { gen, w: wsig, at: replies, ...r };
                     if (r.done.length) bucket.played = [...new Set([...played, ...r.done])].slice(-30);
                 } else bucket.scene = { gen, w: wsig, at: replies, place: '', present: '', picks: (W.hidden || []).map((_, i) => i), ready: [], near: [], done: [], onscreen: [], skipped: true };
@@ -8146,6 +8164,7 @@ async function loreqa_firstPassContext(marker) {
     const ctx = { scope: t.scope || '', recent: [], divergences: t.divergences || [], fixed: t.fixed || '', pos: t.pos || null, guard: t.guard || '' };
     if (!ctx.scope) { try { ctx.scope = (await scoutSnapshot()).scope; } catch (e) { return ctx; } }
     const st = await loreqa_posLoad(ctx.scope);
+    if (loreqa_activeMode === 'char' || loreqa_activeMode === 'set') ctx.divergences = loreqa_divFor(loreqa_activeMode, ctx.divergences, st.byPos[t.bucket || '_']?.scene?.present);
     // 같은 모드가 다룬 질문만 반복 방지 대상으로 (같은 턴의 리롤은 제외)
     const mine = e => !loreqa_activeMode || !String(e.marker).includes(':') || String(e.marker).endsWith(':' + loreqa_activeMode);
     ctx.recent = (st.byPos[t.bucket || '_']?.qa || []).filter(e => String(e.marker).split(':')[0] !== String(marker) && mine(e));
