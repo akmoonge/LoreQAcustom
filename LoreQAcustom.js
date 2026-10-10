@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.8
+//@version 3.3.9
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.8';
+const LOREQA_VER = '3.3.9';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5821,7 +5821,7 @@ async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType
     const _panel = requestOptions.silent ? () => {} : loreqa_updateLorePanel;
     // 사용 맥락 안내: 비상업적 AU·OC 팬 롤플레이라는 점과 짧은 인용 원칙을 시스템 프롬프트 맨 앞에 밝힌다
     if (Number(loreqa_cfg.useContext ?? 1) === 1 && Array.isArray(messages) && messages[0]?.role === 'system' && typeof messages[0].content === 'string') {
-        messages = [{ ...messages[0], content: loreqa_prompt('useContext', {}, loreqa_isKO()) + '\n\n' + messages[0].content }, ...messages.slice(1)];
+        messages = [{ ...messages[0], content: loreqa_prompt('useContext', {}, requestOptions.ledgerJson ? false : loreqa_isKO()) + '\n\n' + messages[0].content }, ...messages.slice(1)];
     }
     const apiType = overrideApiType || loreqa_cfg.apiType || 'gemini';
     loreqa_state.lastError = '';
@@ -7311,7 +7311,7 @@ INPUT: "messages" (the new story messages, each with its index), "ledger" (the r
 A. A writer who assumes the original plus the persona would get it wrong.
 B. It is true now and a later scene depends on it. A finished episode, a trip, a meal, a fight or who was present is not a record; its lasting result can be.
 C. What changed, or what it affects, is a character, group, place, object or event of the original. A canon character who only talks, tells, watches or is present does not make it count. People, places, groups and plans invented by this story, and anything only among them, are never recorded (except the player character's slots, section 3). A generic word (bandits, demon slayers, a magistrate, villagers) means something invented unless the story clearly means the original's specific group.
-Never record: an event of the original that happens with the same outcome, even with the player character there or helping (her being one more person present, helping or riding along is not a change: never write "in the original only A and B did it"); moods and reactions in a scene; plans, rumours, suspicions and predictions; a state that ends within the scene or the arc (where someone is right now, what they hold, a bruise, getting back to a room).
+Never record: an event of the original that happens with the same outcome, even with the player character there or helping (her being one more person present, helping, travelling back in time with them or riding along on a rescue is not a change: never write "in the original only A and B did it"); moods and reactions in a scene; plans, rumours, suspicions and predictions; a state that ends within the scene or the arc (where someone is right now, what they hold, a bruise, getting back to a room).
 
 2. KINDS OF RECORD
 - A canon character's changed situation: alive or dead, lasting injury, where they live or are held, side or group, items or abilities, aims.
@@ -7320,14 +7320,14 @@ Never record: an event of the original that happens with the same outcome, even 
 - A changed event of the original: it ended differently, did not happen, or something happened that the original never has and later scenes must respect.
 
 3. PLAYER CHARACTER SLOTS (entity = player_character; set "slot"; no canon element needed; record only what the story changed or added to the persona, never copy the persona)
-- party: which group she travels with, or alone. One record.
+- party: which group of canon characters she travels with on a journey, or alone. One record. Not who escorts her on an errand, a shopping trip or an outing.
 - home: where she lives, who is her guardian. One record. Not whom she travels with (that is party).
 - standing: the name she is known by, her reputation, rank. One record.
 - items: each lasting item she obtained (a weapon, a treasure, a vault, a key object) or ability she newly gained, in the story, one record each. Not money she carries, food, sweets or small gifts; one record per thing, not one for the key and another for what it opens. Not her own techniques or powers that she simply uses (those belong to the persona), even when the story names them for the first time. Keep the same dimension when the item is later named (put the name in "after"). An item used up, given away or melted into another is rewritten to say so.
 - condition: each lasting injury, curse or illness that outlasts the current arc. Rewrite it when it ends.
 - secrets: a fact of the original she has learned that changes what she does next and that the persona does not already give her: who the enemy is and what he has done, who secretly wants what, who someone really is (including her own true parentage when the story reveals it). Not ordinary events or someone's life story (a sealing, an awakening, a battle, a childhood, how a weapon works, that a famous monster exists), not where people are going, and nothing about people or plans invented by the story. The dimension names the fact itself, so two facts about the same person stay two records. Usually only a few.
 - promises: each promise, debt or goal that involves a canon character. Rewrite it when kept or dropped.
-Where she is, whom she travels with and what she carries are written only here, never in canon characters' records.
+Where she is, whom she travels with and what she carries are written only here, never in canon characters' records. A fact only about her that fits no slot (her fears, her Boggart, her past) is not a record.
 
 4. KEEP THE LEDGER TRUE
 Compare every ledger record with the new messages. When a message ends, reverses or moves on a state (someone leaves or rejoins a group, says farewell, recovers, reconciles, finishes making something, keeps a promise), emit the SAME entity, dimension and slot with the state as it is now, even if the new state alone would not pass section 1. The new "after" replaces the old one, so carry over what is still true. When one change makes several records untrue, update each of them.
@@ -7340,7 +7340,7 @@ Compare every ledger record with the new messages. When a message ends, reverses
 - invalidates: the fact of the original that this record overturns, other than the player character's existence (e.g. "[canon smith] forges swords for no one else"). Leave it "" when the only point is that she exists, that someone met her or knows who she is, or that the original has no such relationship or sibling: the persona already says so. This includes knowledge records such as "[canon character] knows she is [canon hero]'s sister".
 - Nothing beyond the evidence: every detail (which parent, a title, a place, a reason) must be in the quoted messages or the persona. Never fill a gap from the original.
 - core: true only for what the writer must never contradict in any scene: identity and lineage, alive or dead, side or group, a relationship status (family, enmity, alliance, romance), and who knows the player character's identity or a central secret. Everything else false.
-- Write every field in the language of the story's messages, not in the language of these instructions, of the persona or of anyone reading the ledger. The [bracketed] names above are placeholders, never copy them.` } },
+- Write every field in story_language (the language of the story's messages), not in the language of these instructions, of the persona or of anyone reading the ledger. The [bracketed] names above are placeholders, never copy them.` } },
     tidy: { label: '분기 장부 정리', ph: ['source', 'position'],
         locked: '뒤에 기록 번호 규칙과 JSON 출력 형식(merge / drop / core)이 자동으로 붙음. 결과에 안 나온 기록은 그대로 남음',
         def: { en: `You tidy the divergence ledger of a story set in the world of "{{source}}". The story is now at: "{{position}}".
@@ -8578,6 +8578,12 @@ If the same thing happens in the original with the same people at roughly the sa
 For (a), "invalidates" MUST state the original's version that no longer holds. For (b) and (c), "invalidates" states briefly what the original does not contain. Never leave "invalidates" empty.`;
 }
 // 분기 추출 프롬프트 = 편집 가능한 '분기 판정 기준'(판단 규칙 전부) + 잠긴 JSON 형식(플러그인이 읽는 칸과 인용 규칙)
+// 이야기 메시지의 언어 (기록을 이 언어로 쓰게 한다). 가나가 있으면 일본어, 한글이 많으면 한국어, 한자만이면 중국어, 아니면 영어
+function scoutStoryLanguage(batch){
+    const t=(batch||[]).filter(m=>['char','assistant'].includes(m.role)).map(m=>m.text).join(' ').slice(0,20000)||(batch||[]).map(m=>m.text).join(' ').slice(0,20000);
+    const n=re=>(t.match(re)||[]).length, kana=n(/[\u3040-\u30ff]/g), hangul=n(/[\uac00-\ud7a3]/g), han=n(/[\u4e00-\u9fff]/g), latin=n(/[A-Za-z]/g);
+    if(kana>20)return 'Japanese';if(hangul>Math.max(20,latin/2))return 'Korean';if(han>Math.max(20,latin/2))return 'Chinese';return 'English';
+}
 function scoutLedgerExtractRule(){
     const cut=SCOUT_LEDGER_EXTRACT.indexOf('Return JSON only:');
     const locked=SCOUT_LEDGER_EXTRACT.slice(cut).replace('use the empty string "" when no original-work assumption is invalidated','see section 5 for its content')
@@ -9123,7 +9129,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
           if(await resync(end,'읽기 전'))continue outer;
           scoutLedgerStatus.set(scope,`중대 분기 확인 중: ${start}/${messages.length} 완료 · 인덱스 ${start}~${end-1} 읽기`);
           scoutShow(scoutLedgerStatus.get(scope));
-          const payload={scope,work:loreqa_cfg.source,ledger:scoutLedgerProjection(ledger),manual_fixed:loreqa_cfg.scoutFactsByScope?.[scope]||'',...branchExtras,new_batch_start:start,messages:batch};
+          const payload={scope,work:loreqa_cfg.source,story_language:scoutStoryLanguage(batch),ledger:scoutLedgerProjection(ledger),manual_fixed:loreqa_cfg.scoutFactsByScope?.[scope]||'',...branchExtras,new_batch_start:start,messages:batch};
           try{events=await scoutLedgerExtractBatch(payload,batch,start,ledger,outputBudget);break;}
           catch(error){
             if(!['SCOUT_LEDGER_LIMIT','SCOUT_LEDGER_JSON'].includes(error.code))throw error;
