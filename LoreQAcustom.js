@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.3
+//@version 3.3.4
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.3';
+const LOREQA_VER = '3.3.4';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3620,7 +3620,7 @@ async function loreqa_renderLedgerSummary(snap) {
     const allStates = loreqa_latestStates(loreqa_trueDivergences(scoutLedgerProjection(ledger))), helper = loreqa_capTail(allStates, 'helperDivMax');
     const tier = Number(loreqa_cfg.branchMainTier ?? 3);
     box.innerHTML = '';
-    box.appendChild(loreqa_el('div', 'loreqa-muted', `기록 ${ledger.events.length}개 · 메인 주입 ${tier === 0 ? '끔' : loreqa_mainDivCount(allStates) + '개' + (LOREQA_TIER_LABEL[tier] || '')} · 보조 ${helper.length}개 · 제외 ${ledger.events.length - active.length}개` + (scoutLedgerStatus.get(snap.scope) ? ` · ${scoutLedgerStatus.get(snap.scope)}` : '')));
+    box.appendChild(loreqa_el('div', 'loreqa-muted', `기록 ${ledger.events.length}개 · 메인 주입 ${tier === 0 ? '끔' : loreqa_mainDivCount(allStates) + '개' + (LOREQA_TIER_LABEL[tier] || '')} · 보조 ${helper.length}개 · 제외 ${ledger.events.length - active.length}개` + (ledger.lastTidy ? ` · 마지막 정리 ${String(ledger.lastTidy.time || '').slice(5, 16).replace('T', ' ')} ${ledger.lastTidy.error ? '실패: ' + ledger.lastTidy.error : `(합침 ${ledger.lastTidy.merged || 0} · 지움 ${ledger.lastTidy.dropped || 0})`}` : ' · 정리 기록 없음') + ` · 다음 자동 정리까지 ${Math.max(0, (Number(loreqa_cfg.ledgerTidyEvery) || 0) - (ledger.sinceTidy || 0))}건` + (scoutLedgerStatus.get(snap.scope) ? ` · ${scoutLedgerStatus.get(snap.scope)}` : '')));
     for (const e of active.slice(-3).reverse()) {
         const line = loreqa_el('div', 'loreqa-muted', `• ${e.core ? '★ ' : ''}${e.entity} · ${e.after}`);
         line.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;';
@@ -9142,7 +9142,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         if(every>0&&(ledger.sinceTidy||0)>=every){
             scoutLedgerStatus.set(scope,`분기 장부 정리 중 (새 기록 ${ledger.sinceTidy}건)`);scoutShow(scoutLedgerStatus.get(scope));
             try{const r=await scoutLedgerTidyWork(ledger,scope,'auto',messages.slice(0,end));if(!r.skipped)await scoutLedgerSave(ledger);}
-            catch(e){scoutLedgerLogAdd(scope,{time:new Date().toISOString(),phase:'tidy',status:'정리 실패 (읽기는 계속)',error:String(e.message||e)});ledger.sinceTidy=0;await scoutLedgerSave(ledger);}
+            catch(e){scoutLedgerLogAdd(scope,{time:new Date().toISOString(),phase:'tidy',status:'정리 실패 (읽기는 계속)',error:String(e.message||e)});ledger.sinceTidy=0;ledger.lastTidy={time:new Date().toISOString(),error:String(e.message||e).slice(0,200)};await scoutLedgerSave(ledger);}
         }
       }
       scoutLedgerStatus.set(scope,ledger.hashes.length<messages.length?`과거 분석 ${ledger.hashes.length}/${messages.length}. 이어서 읽기로 나머지를 확인할 수 있습니다.`:`중대 분기 ${scoutLedgerProjection(ledger).length}건 · ${messages.length}개 메시지 확인`);
@@ -10427,7 +10427,10 @@ function scoutLedgerLogText(value) {
     return text.length>12000?text.slice(0,6000)+'\n[중간 생략]\n'+text.slice(-6000):text;
 }
 function scoutLedgerLogAdd(scope, entry) {
-    const list=scoutLedgerLogs.get(scope)||[];list.push(entry);if(list.length>8)list.shift();scoutLedgerLogs.set(scope,list);
+    const list=scoutLedgerLogs.get(scope)||[];list.push(entry);
+    // 정리 기록은 추출 기록 8개에 밀려 사라지지 않게 따로 최근 5개를 남긴다
+    const drop=(pred,max)=>{let n=list.filter(pred).length;for(let i=0;i<list.length&&n>max;){if(pred(list[i])){list.splice(i,1);n--;}else i++;}};
+    drop(e=>e.phase!=='tidy',8);drop(e=>e.phase==='tidy',5);scoutLedgerLogs.set(scope,list);
     while(scoutLedgerLogs.size>8)scoutLedgerLogs.delete(scoutLedgerLogs.keys().next().value);
 }
 function scoutLedgerLogButton(box, scope) {
