@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.31
+//@version 3.2.32
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7669,10 +7669,13 @@ const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given abov
   If the original has no further events after the cut, write the single line "- none".
 [PUBLIC]
 - One line per major ORIGINAL character or faction active in this period, at most {{count}}: where they are and what they are doing or heading toward right now, as of the cut. Present tense. No backstory, no explanation of motives or mechanics, nothing after the cut.
+  Say each fact once in the whole table: do not repeat here what [NOW] or a beat already says. A character whose only current activity is the [NOW] event or a beat gets no line here.
   Do not state where the story's own characters (the player's original character and anyone created by the story) are or whom they travel with: that changes scene by scene and is judged from the story itself, not here. Do not list them as members of a group even if confirmed_changes say they joined it. Mention them only where confirmed_changes give an original character or faction a lasting new state such as a death, a defection or a new ruler; joining, leaving or travelling with a group never counts.
 [HIDDEN]
 - Concrete facts true at the cut that some characters do not know and could let slip, reveal or act on by mistake. Format: "<who does not know> does not know <fact>; known to <who>". One short line each, at most 8; fewer is fine.
   Not hidden facts: anything [BEATS] above places after the cut (a plan whose next step is a beat is not yet done: say only what is already set up), anything the original develops only later, mere news someone has not heard yet, unknown places, and vague items such as "does not know the whole story of X" or "does not fully understand Y".
+  News is not a secret: someone elsewhere not having heard that a fight was won, a technique learned or a place reached is never a line here.
+  "known to" names only characters the original shows learning the fact by the cut, or confirmed_changes say know it. Never guess who could have found out (by spying, by being nearby); leave out a name you are not sure of, and drop the line if no one is sure.
   No motives, mechanics, weaknesses or future plans. Secrets created by the story count only if confirmed_changes state them; never invent new ones.
 Every line starts with "- ". Write the lines in {{language}}; keep the four tags and the markers "| next:", "/ at:", "/ present:", "/ then:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
 // 마지막 세계 상태표 생성 실패 이유 (위치 카드에 보여 줌): HTTP 오류 코드, 출력 한도, 또는 형식을 못 읽은 답의 앞부분

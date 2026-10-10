@@ -161,7 +161,8 @@ comments are Korean.
   "present" people in the current scene (off-screen events never READY); "then:" is injected only
   for follow / canon stances. Stored as `byPos[key].world` {raw,pub,hidden,beats,v,n,nb,
   divN}; regenerated on position / ledger-count / `worldCount` / `beatCount` change.
-  The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
+  Each fact once (PUBLIC skips what NOW / BEATS say); HIDDEN drops news ("hasn't heard X won") and
+  "known to" lists only on-page knowers, no guessing. The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
   prompt: an old saved prompt produced tables without [BEATS]); the parser accepts [TAG], 【TAG】, TAG:.
 - 장면 판단 (`loreqa_judgeScene`, prompt `sceneJudge`, 전개모드 API with its profile reasoning, no search,
   last `sceneTurns` turns) runs when `st.sceneGen` bumps (time-jump detector answers time + SAME/NEW),
