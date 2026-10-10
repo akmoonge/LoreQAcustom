@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.44
+//@version 3.2.45
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7640,12 +7640,12 @@ function loreqa_parseWorld(raw) {
     tags.forEach(([k, i, len], n) => { const start = i + len, end = n + 1 < tags.length ? tags[n + 1][1] : text.length; out[k] = lines(text.slice(start, end)); });
     // 비트: "<사건> / needs: <조건>" + 끝의 "(broken: <이유>)"
     // 비트: "<사건> / at: <장소> / present: <함께 있어야 할 인물> / then: <원작 결말>" (+ "(broken: <이유>)"). 예전 "/ needs:" 도 읽는다
-    const field = (l, name) => { const m = l.match(new RegExp('/\\s*' + name + '\\s*[:：]\\s*(.*?)(?=\\s*/\\s*(?:at|present|then|needs)\\s*[:：]|\\s*\\(broken\\b|$)', 'i')); return m ? m[1].trim() : ''; };
+    const field = (l, name) => { const m = l.match(new RegExp('/\\s*' + name + '\\s*[:：]\\s*(.*?)(?=\\s*/\\s*(?:at|present|changed|then|needs)\\s*[:：]|\\s*\\(broken\\b|$)', 'i')); return m ? m[1].trim() : ''; };
     out.beats = out.beats.filter(l => !/^(none|なし|없음|无|無)\.?$/i.test(l.trim())).map(l => {
         const broken = /\(broken\b[^)]*\)\s*$/i.test(l);
-        const event = l.split(/\s*\/\s*(?:at|present|then|needs)\s*[:：]/i)[0].replace(/\(broken\b[^)]*\)\s*$/i, '').trim();
-        const at = field(l, 'at'), present = field(l, 'present'), then = field(l, 'then'), needs = field(l, 'needs');
-        return { text: l, event, at, present, then, needs: needs || [at && 'at ' + at, present && 'present: ' + present].filter(Boolean).join('; '), broken };
+        const event = l.split(/\s*\/\s*(?:at|present|changed|then|needs)\s*[:：]/i)[0].replace(/\(broken\b[^)]*\)\s*$/i, '').trim();
+        const at = field(l, 'at'), present = field(l, 'present'), changed = field(l, 'changed'), then = field(l, 'then'), needs = field(l, 'needs');
+        return { text: l, event, at, present, changed, then, needs: needs || [at && 'at ' + at, present && 'present: ' + present].filter(Boolean).join('; '), broken };
     });
     out.now = out.now.join(' ');
     return out;
@@ -7665,11 +7665,12 @@ OUTPUT FORMAT (this overrides any format given above). Output exactly four secti
 [BEATS] (REQUIRED: always write this section; it is the ONLY place for events after the cut)
 - The next major events of the ORIGINAL after the cut, in order, at most {{beats}}. Format:
   The first beat is the "next:" event of [NOW].
-  "(<chapter or episode number it happens in, e.g. Ch.195>) <what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / then: <how it ends in the original, one short clause>"
+  "(<chapter or episode number it happens in, e.g. Ch.195>) <what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / changed: <how confirmed_changes alter this event in this story: who is different, who already knows or is already friends or enemies, what goes differently; write "as canon" if nothing changes> / then: <how it ends in the original, one short clause>"
   Keep the outcome only in "then:"; the first part says how the event starts, not how it ends.
   Each beat must come from the summary of the chapter it names; if you cannot tie an event to a chapter of {{mediumName}}, leave it out.
   "present" names people, not conditions: the ones who have to be physically there.
   Skip events listed in events_already_played (they already happened in this story).
+  "changed" applies confirmed_changes to the event: a renamed or replaced character, a relationship that already exists, a secret already known. It says how the event would play out differently here, not a new outcome; never invent changes that confirmed_changes do not support.
   If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
   If the original has no further events after the cut, write the single line "- none".
 [PUBLIC]
@@ -7684,7 +7685,7 @@ OUTPUT FORMAT (this overrides any format given above). Output exactly four secti
   News is not a secret: someone elsewhere not having heard that a fight was won, a technique learned or a place reached is never a line here.
   "known to" names only characters the original shows learning the fact by the cut, or confirmed_changes say know it. Never guess who could have found out (by spying, by being nearby); leave out a name you are not sure of, and drop the line if no one is sure.
   No motives, mechanics, weaknesses or future plans. Secrets created by the story count only if confirmed_changes state them; never invent new ones.
-Every line starts with "- ". Write the lines in {{language}}; keep the four tags and the markers "| next:", "/ at:", "/ present:", "/ then:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
+Every line starts with "- ". Write the lines in {{language}}; keep the four tags and the markers "| next:", "/ at:", "/ present:", "/ changed:", "/ then:" and "(broken:" in English as they are. No preamble, no closing remarks.`;
 // 마지막 세계 상태표 생성 실패 이유 (위치 카드에 보여 줌): HTTP 오류 코드, 출력 한도, 또는 형식을 못 읽은 답의 앞부분
 let loreqa_worldErr = '';
 let loreqa_worldNote = ''; // 생성은 됐지만 원작 비트가 빈 경우의 안내
@@ -7727,7 +7728,7 @@ async function loreqa_judgeScene(W, snap, divergences, played) {
     const lastUser = snap.list[snap.list.length - 1]?.role === 'user' ? scoutText(snap.list[snap.list.length - 1]) : '';
     const user = JSON.stringify({
         world_state: (W.pub || []).map((p, i) => ({ n: i + 1, text: p })), hidden_states: (W.hidden || []).map((h, i) => ({ n: i + 1, text: h })),
-        cut: W.now || '', beats: beats.map((b, i) => ({ n: i + 1, event: b.event, at: b.at, present: b.present, ...(b.needs && !b.present ? { needs: b.needs } : {}), ...(b.broken ? { broken: true } : {}) })),
+        cut: W.now || '', beats: beats.map((b, i) => ({ n: i + 1, event: b.event, at: b.at, present: b.present, ...(b.changed && !/^as canon$/i.test(b.changed) ? { changed: b.changed } : {}), ...(b.needs && !b.present ? { needs: b.needs } : {}), ...(b.broken ? { broken: true } : {}) })),
         story_changes: (divergences || []).slice(-20).map(e => `${e.entity} · ${e.dimension}: ${e.after}`), recent_story: recent, latest_user_input: lastUser.slice(-2000),
     });
     const nums = (raw, label, max) => { const m = raw.match(new RegExp('^\\W*' + label + '\\s*[:：]\\s*(.*)$', 'im')); if (!m || /^\s*NONE\b/i.test(m[1])) return []; return [...new Set((m[1].match(/\d+/g) || []).map(Number).filter(x => x >= 1 && x <= max).map(x => x - 1))]; };

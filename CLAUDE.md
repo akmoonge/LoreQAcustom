@@ -177,7 +177,9 @@ comments are Korean.
   web search, reads no chat turns, only position + ledger): `[PUBLIC]` = what ORIGINAL characters /
   factions are doing now (never the story's own characters' whereabouts: those change scene by
   scene), `[HIDDEN]` = one-line secrets, `[BEATS]` = next original events as
-  "event / at: place / present: people / then: canon outcome" (+ "(broken: …)"; old "/ needs:" still parsed).
+  "(Ch.N) event / at: place / present: people / changed: how this story's confirmed changes alter it (or \"as canon\") /
+  then: canon outcome" (`changed` restores the old guide's [changed]/[as canon] notes users liked; it stays in the
+  injection for every stance, only `then:` is stance-gated) (+ "(broken: …)"; old "/ needs:" still parsed).
   `[NOW]` comes first (last event done | next: first event not done) and the order is NOW, BEATS,
   PUBLIC, HIDDEN, so HIDDEN is written after BEATS and can avoid them. READY needs the beat's
   "present" people in the current scene (off-screen events never READY); "then:" is injected only
