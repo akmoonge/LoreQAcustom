@@ -122,7 +122,9 @@ comments are Korean.
   all first meetings / joins / the sword, none about feelings, and Inuyasha was still "confronting" her).
   INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
   original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
-  wording ("if no specific fact is broken, use ''") left every relationship record empty.
+  wording ("if no specific fact is broken, use ''") left every relationship record empty. Then every record repeated the same
+  premise ("Izayoi's only child is Inuyasha") into the main block: now a premise is stated once, other records give
+  only what they overturn beyond it (tidy dedupes too).
 - NAMES (locked, extract + tidy): one spelling/script per person, copied from the ledger or as the story writes it,
   never romanized; dimensions in the record language (the English "relationship with <name>" template produced
   "knowledge of Sayo" next to 「小夜」).
