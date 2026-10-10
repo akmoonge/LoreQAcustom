@@ -128,6 +128,10 @@ comments are Korean.
   injection: slot records always go in with the branch block (also on tier 1 "★만"), first, under "## <name>의 지금
   상태". Relationship records hold both directions; where she is / what she carries never goes in canon records.
   Knowledge records hold no feelings; in-progress states are updated when finished.
+  `loreqa_slotOf` trusts a dimension that names a slot over the slot field (tidy once tagged a "party" record as
+  standing, so a stale "alone" and a stale "with the group" both reached the main model); tidy keeps the source slot.
+  The review line must report joins / leaves, items gained / used up and promises (the farewell at 188 and the
+  finished sword at 197 were missed); used-up items are rewritten, a forged item gets its own record.
   INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
   original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
   wording ("if no specific fact is broken, use ''") left every relationship record empty. Then every record repeated the same
