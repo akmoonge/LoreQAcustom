@@ -134,11 +134,11 @@ comments are Korean.
   standing, so a stale "alone" and a stale "with the group" both reached the main model); tidy keeps the source slot.
   The review line must report joins / leaves, items gained / used up and promises (the farewell at 188 and the
   finished sword at 197 were missed); used-up items are rewritten, a forged item gets its own record.
-  INVALIDATES (locked + default prompt): for OC records write the canon assumption the record overturns ("In the
-  original [canon mother] has one child, [canon son]"); only "she doesn't exist / they never met" is banned. The old
-  wording ("if no specific fact is broken, use ''") left every relationship record empty. Then every record repeated the same
-  premise ("Izayoi's only child is Inuyasha") into the main block: now a premise is stated once, other records give
-  only what they overturn beyond it (tidy dedupes too). "after" (locked) = the current state in one or two sentences, no scene
+  INVALIDATES (locked + default prompt): records about the OC leave it "" unless they change a fact of the original
+  beyond her existence (a canon character's own situation, side, plan, item, knowledge). "She doesn't exist", "they
+  never met", "no such relationship / no sister in the original" are banned: the persona already says it. The earlier
+  "write the canon assumption the record overturns" rule made every relationship record repeat "Inuyasha has no
+  sister in the original", and a "state it once" rule never stopped it. "after" (locked) = the current state in one or two sentences, no scene
   details (blushing, smiles, smells); an update carries over what is still true from the record it replaces. Same
   entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest). Tidy (locked)
   must merge them, following the newest where they differ (a merge once kept "still travelling together" after she
