@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.13
+//@version 3.3.14
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.13';
+const LOREQA_VER = '3.3.14';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5821,7 +5821,7 @@ async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType
     const _panel = requestOptions.silent ? () => {} : loreqa_updateLorePanel;
     // 사용 맥락 안내: 비상업적 AU·OC 팬 롤플레이라는 점과 짧은 인용 원칙을 시스템 프롬프트 맨 앞에 밝힌다
     if (Number(loreqa_cfg.useContext ?? 1) === 1 && Array.isArray(messages) && messages[0]?.role === 'system' && typeof messages[0].content === 'string') {
-        messages = [{ ...messages[0], content: loreqa_prompt('useContext', {}, requestOptions.ledgerJson ? false : loreqa_isKO()) + '\n\n' + messages[0].content }, ...messages.slice(1)];
+        messages = [{ ...messages[0], content: loreqa_prompt('useContext', {}, (requestOptions.ledgerJson || ['장면 판단', '세계 상태표', '시간 점프 감지'].includes(requestOptions.step)) ? false : loreqa_isKO()) + '\n\n' + messages[0].content }, ...messages.slice(1)];
     }
     const apiType = overrideApiType || loreqa_cfg.apiType || 'gemini';
     loreqa_state.lastError = '';
