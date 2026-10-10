@@ -1,6 +1,6 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.2.34
+//@version 3.2.35
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
@@ -7657,14 +7657,17 @@ async function loreqa_helperDivergences(snap) {
     catch (e) { return []; }
 }
 // 세계 상태표 출력 형식: 프롬프트를 직접 고친 사용자에게도 항상 붙는다 (예전 형식으로 고쳐 둔 프롬프트 때문에 [BEATS] 가 안 나오던 문제)
-const LOREQA_WORLD_FORMAT = `OUTPUT FORMAT (this overrides any format given above). Output exactly four sections, in this order, with these tags:
+const LOREQA_WORLD_FORMAT = `SOURCE: describe {{mediumName}} only. Adaptations differ (anime-original episodes and arcs, changed outcomes, films, games): never use an event, detail or outcome that exists only in another version. Many web summaries describe the anime episodes; use one only after checking that the same thing happens in {{mediumName}} at that chapter.
+HOW TO SEARCH: first find the list of chapters (or episodes) right after current_point by their numbers, with a summary of each, from a source that covers {{mediumName}} chapter by chapter. Take the beats and the cut from those chapter summaries. Character pages and anime episode pages are not a source for beats.
+OUTPUT FORMAT (this overrides any format given above). Output exactly four sections, in this order, with these tags:
 [NOW]
 - One line: the last event of the original that has ALREADY happened at this point, then "| next:" and the first event that has NOT happened yet. Everything below must agree with this cut: before it is current state or secret, after it is a beat.
 [BEATS] (REQUIRED: always write this section; it is the ONLY place for events after the cut)
 - The next major events of the ORIGINAL after the cut, in order, at most {{beats}}. Format:
   The first beat is the "next:" event of [NOW].
-  "<what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / then: <how it ends in the original, one short clause>"
+  "(<chapter or episode number it happens in, e.g. Ch.195>) <what starts or happens, and who acts> / at: <where it happens> / present: <the characters who must be together in that place for it to happen> / then: <how it ends in the original, one short clause>"
   Keep the outcome only in "then:"; the first part says how the event starts, not how it ends.
+  Each beat must come from the summary of the chapter it names; if you cannot tie an event to a chapter of {{mediumName}}, leave it out.
   "present" names people, not conditions: the ones who have to be physically there.
   Skip events listed in events_already_played (they already happened in this story).
   If confirmed_changes make an event impossible as written, keep it and end the line with "(broken: <short reason>)".
@@ -7688,7 +7691,8 @@ let loreqa_worldNote = ''; // 생성은 됐지만 원작 비트가 빈 경우의
 // played: 이 위치에서 이미 이야기에서 일어난 원작 비트 (다시 만들 때 빼라고 알려 줌)
 async function loreqa_generateWorld(label, divergences, played = []) {
     const lang = scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
-    const vars = { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, language: lang };
+    const mediumName = { novel: 'the original novels', manga: 'the original manga', webnovel: 'the original web novel', anime: 'the anime TV series', drama: 'the live-action series', game: 'the game' }[loreqa_cfg.canonMedium] || 'the medium that current_point is counted in (volume / chapter numbers mean the manga or novels, not the anime)';
+    const vars = { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, mediumName, language: lang };
     const system = loreqa_prompt('world', vars, false) + '\n\n' + LOREQA_WORLD_FORMAT.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vars ? String(vars[k]) : m) + await loreqa_flowOcRule();
     const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), events_already_played: played.slice(-20), ...(await loreqa_ctxExtras('flow')) });
     try {

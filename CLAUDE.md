@@ -164,7 +164,11 @@ comments are Korean.
   PUBLIC skips what NOW / BEATS say (only PUBLIC: a global "each fact once" made HIDDEN drop the real secret
   "the party doesn't know Naraku sent Tsubaki" and fill up with weak lines); HIDDEN may be empty, keeps plans set
   in motion that their targets don't know, drops facts that become true after the cut; first beat = NOW's next. HIDDEN drops news ("hasn't heard X won") and
-  "known to" lists only on-page knowers, no guessing. The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
+  "known to" lists only on-page knowers, no guessing. The locked format starts with SOURCE (only `mediumName`, from
+  `canonMedium`; auto = the medium the position is counted in, so Vol/Ch = manga, never anime-original arcs: Tsubaki's
+  anime-only 爆流破 death leaked in) and HOW TO SEARCH (chapter list + per-chapter summaries after current_point first;
+  no character / anime episode pages for beats). Each beat starts with its chapter "(Ch.195)" and must come from that
+  chapter's summary. No "drop unverified details" rule: it would strip beats to bare bones. The output format lives in the locked `LOREQA_WORLD_FORMAT` (appended even to a customised `world`
   prompt: an old saved prompt produced tables without [BEATS]); the parser accepts [TAG], 【TAG】, TAG:.
 - 장면 판단 (`loreqa_judgeScene`, prompt `sceneJudge`, 전개모드 API with its profile reasoning, no search,
   last `sceneTurns` turns) runs when `st.sceneGen` bumps (time-jump detector answers time + SAME/NEW),
