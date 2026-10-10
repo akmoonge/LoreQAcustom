@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.2
+//@version 3.3.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.2';
+const LOREQA_VER = '3.3.3';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7323,9 +7323,9 @@ Never record: an event of the original that happens as written, even with the pl
 - party: which group she travels with, or alone. One record.
 - home: where she lives, who is her guardian. One record.
 - standing: the name she is known by, her reputation, rank. One record.
-- items: each item or ability she gained, one record each. Keep the same dimension when the item is later named (put the name in "after"). An item used up, given away or melted into another is rewritten to say so.
+- items: each item she obtained, or ability she newly gained, in the story, one record each. Not her own techniques or powers that she simply uses (those belong to the persona), even when the story names them for the first time. Keep the same dimension when the item is later named (put the name in "after"). An item used up, given away or melted into another is rewritten to say so.
 - condition: each lasting injury, curse or illness. Rewrite it when it ends.
-- secrets: a fact or secret of the original she has learned that a later scene depends on (who someone really is, who is behind something). Not where people are going or what they are doing.
+- secrets: a hidden truth of the original she has learned, one that most characters do not know and that changes what she can do (who someone really is, who is behind something, what someone secretly wants). Not ordinary events she heard about (a sealing, an awakening, a battle, someone's past), not where people are going, and nothing about people or plans invented by the story. Usually only a few.
 - promises: each promise, debt or goal that involves a canon character. Rewrite it when kept or dropped.
 Where she is, whom she travels with and what she carries are written only here, never in canon characters' records.
 
@@ -7334,7 +7334,7 @@ Compare every ledger record with the new messages. When a message ends, reverses
 
 5. HOW TO WRITE A RECORD
 - entity: whose state it is. Copy the spelling the ledger already uses; otherwise the one the story's messages use. Never romanize or translate a name.
-- dimension: a short key naming the lasting state, never a scene. Reuse the ledger's key for the same state.
+- dimension: a short key naming the lasting state, never a scene, in the language of the story's messages. Reuse the ledger's key for the same state.
 - after: the state as it is now, in one or two sentences. No scene details (expressions, smells, gestures, who said what).
 - change: how it came about, in one sentence.
 - invalidates: the fact of the original that this record overturns, other than the player character's existence (e.g. "[canon smith] forges swords for no one else"). Leave it "" when the only point is that she exists, that someone met her, or that the original has no such relationship or sibling: the persona already says so.
