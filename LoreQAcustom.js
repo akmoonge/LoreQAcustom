@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.2
+//@version 3.4.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.2';
+const LOREQA_VER = '3.4.3';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7368,7 +7368,7 @@ Never record: an event of the original that happens with the same outcome, even 
 - condition: each lasting injury, curse or illness that outlasts the current arc. Rewrite it when it ends.
 - secrets: a fact of the original she has learned that changes what she does next and that the persona does not already give her: who the enemy is and what he has done, who secretly wants what, who someone really is (including her own true parentage when the story reveals it). Not ordinary events or someone's life story (a sealing, an awakening, a battle, a childhood, how a weapon works, that a famous monster exists), not where people are going, and nothing about people or plans invented by the story. The dimension names the fact itself, so two facts about the same person stay two records. Usually only a few.
 - promises: each promise, debt or goal that involves a canon character. Rewrite it when kept or dropped.
-Where she is, whom she travels with and what she carries are written only here, never in canon characters' records. A fact only about her that fits no slot (her fears, her Boggart, her past) is not a record.
+Where she is, whom she travels with and what she carries are written only here, never in canon characters' records. A fact only about her that fits no slot (her fears, her worst nightmare, her past) is not a record.
 
 4. KEEP THE LEDGER TRUE
 Compare every ledger record with the new messages. When a message ends, reverses or moves on a state (someone leaves or rejoins a group, says farewell, recovers, reconciles, finishes making something, keeps a promise), emit the SAME entity, dimension and slot with the state as it is now, even if the new state alone would not pass section 1. The new "after" replaces the old one, so carry over what is still true. When one change makes several records untrue, update each of them.
@@ -9461,7 +9461,7 @@ async function scoutLedgerPanel(){
           const sel=document.createElement('select');sel.className='loreqa-select';sel.style.cssText='display:block;width:100%;margin-top:2px';
           for(const [v,l] of [['','(보통 기록)'],...Object.entries(LOREQA_PC_SLOTS).map(([k,o])=>[k,o.ko])]){const o=document.createElement('option');o.value=v;o.textContent=l;sel.appendChild(o);}
           w.appendChild(sel);add.appendChild(w);f.slot=sel; }
-        fld('entity','인물·대상 (필수)',false,'예: 小夜');fld('dimension','항목 (필수, 같은 사실의 기준 키)',false,'예: 犬夜叉一行との関係');fld('category','분류');
+        fld('entity','인물·대상 (필수)',false,'예: 원작 인물 이름');fld('dimension','항목 (필수, 같은 사실의 기준 키)',false,'예: 주인공과의 관계');fld('category','분류');
         fld('change','무엇이 바뀌었나',true);fld('after','바뀐 뒤 상태 (필수)',true);fld('invalidates','깨진 원작 사실 (없으면 비움)',true);fld('when','시점',false,'모르면 비움');
         const cw=document.createElement('label');cw.style.cssText='display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;color:#cdd6f4';const cb=document.createElement('input');cb.type='checkbox';cw.append(cb,document.createTextNode('★ 핵심'));add.appendChild(cw);
         const lw=document.createElement('label');lw.style.cssText=cw.style.cssText;const lcb=document.createElement('input');lcb.type='checkbox';lcb.checked=true;lw.append(lcb,document.createTextNode('🔒 정리에서 보호 (근거 인용이 없어 정리가 지울 수 있음)'));add.appendChild(lw);
