@@ -110,6 +110,15 @@ comments are Korean.
   slot (+ dimension for multi slots); `loreqa_slotOf` trusts a dimension that names a slot. The slot survives
   validation, projection, manual add / edit, import / export and tidy merges. Main injection: slot records always go
   in with the branch block (also on tier 1), first, under "## <name>의 지금 상태".
+  Slot `events` (3.4.4, one record): the original's events she took part in, one short line each; the model writes only
+  new lines and `loreqa_appendPcEvents` appends them to the previous record (dedupe, `pcEventsChars` 4000 drops oldest;
+  validator allows 6000 chars for this slot). It covers what she learned at canon events (secrets heard there go here).
+  Party = journeys of days, not a one-day escort; home never names companions; a later name updates the same item.
+  Inner thoughts in narration / status panels are not evidence of knowledge (prompt rule).
+- Tidy (3.4.6–3.4.7): merges an item recorded before and after its name, and an earlier stage a newer record settled
+  (suspicion → confirmed): never dropped, the earlier stage goes into `change` (the main model sees change in
+  parentheses via `loreqa_divLine`). Drop is only for non-records (e.g. knowledge of her money / fears) and records that
+  no longer hold at all; the locked format says so, because a "by" field made the model drop superseded records.
 - Same entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy's code
   fallback cuts any same-key group to the newest, and a merge output replaces leftovers with its key. Don't rely on
   tidy for quality: record quality comes from the extraction prompt; deterministic cleanup belongs in code.
@@ -138,6 +147,9 @@ comments are Korean.
   differences): GigaTrans rewrites the last reply after we read it (original moves into
   `<GigaTrans>`, trimmed), which used to rewind and re-read one message every turn.
   `scoutHashMatch` still accepts the older un-normalised hashes.
+  `scoutText` = `scoutNoise(scoutTextKeep(msg))`: strips other plugins' `<reasoning>`/`<thinking>` notes and illustration
+  markup (`class="am-…"`, `<img>`) before any helper reads it; `scoutCompleted` keeps `keep` (pre-strip text) so evidence
+  hashes saved before 3.4.5 still match.
   `ledgerDeferLatest` (default on): `scoutCompleted` stops before the newest reply, so it is read
   next turn, after GigaTrans / status-panel / illustration plugins have rewritten it. Reconcile
   only logs a rewind when a message really changed (a shorter readable range is trimmed quietly).
@@ -154,6 +166,9 @@ comments are Korean.
   Source). Keys `n:<nums>`, `pre:` (before the original starts), `post:`.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
+- `posPrevAnchor` (3.4.1, default on): the judge gets `previous_point` and moves only on progress markers (a later
+  chapter's event done, season / term / time skip, characters who appear later), never on a similar-looking scene.
+  Sequential harness test: INU stopped jumping to Vol.10 / Vol.15 lookalikes; HP unchanged (dates).
 - 전개 방식 `flowStyle` (3.4.0): 'beats' = 비트 모드 (세계 상태표, below) / 'list' = 목록 모드, the 3.2.16 behaviour
   restored verbatim: per position `loreqa_generateGuard` (prompt `guard`, bucket.secrets) + `loreqa_generateGuide` (prompt
   `guide`, `guideCount` events marked [as canon]/[changed]/[impossible], bucket.guide, regenerated when the ledger count
