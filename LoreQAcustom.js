@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.6
+//@version 3.4.7
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.6';
+const LOREQA_VER = '3.4.7';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7389,7 +7389,7 @@ Compare every ledger record with the new messages. When a message ends, reverses
         locked: '뒤에 기록 번호 규칙과 JSON 출력 형식(merge / drop / core)이 자동으로 붙음. 결과에 안 나온 기록은 그대로 남음',
         def: { en: `You tidy the divergence ledger of a story set in the world of "{{source}}". The story is now at: "{{position}}".
 The records were written batch by batch while reading forward. Make the ledger describe the CURRENT state, by the same rules the records were written with:
-- The same state twice (same entity and topic, even under another key or a later name): MERGE into one. Where they differ, follow the newest; keep older details only while they are still true. This includes one item recorded before and after it got its name ("unnamed sword" and "sword [name]"), and an earlier stage that a newer record has settled (a suspicion or belief that is now confirmed or disproved, a plan now carried out): merge them and keep the settled state.
+- The same state twice (same entity and topic, even under another key or a later name): MERGE into one. Where they differ, follow the newest; keep older details only while they are still true. This includes one item recorded before and after it got its name ("unnamed sword" and "sword [name]"), and an earlier stage that a newer record has settled (a suspicion or belief that is now confirmed or disproved, a plan now carried out). Never drop such an earlier stage: merge it into the newer record, with only the settled state in "after" and the earlier stage told in "change" (one sentence, e.g. "first believed X; learned Y at #N"), since later scenes may still refer to it.
 - Overturned or ended (a quarrel reconciled, someone who left a group, a finished task, a healed injury, a kept promise): rewrite it to the current state, or DROP it if nothing of it still holds. recent_story_messages shows where the story stands; use it only for this, and never drop a record just because it is not mentioned there.
 - Not a record by the rules: DROP it (knowledge of minor things about the player character such as her money, her fears or a habit; an event of the original that happened as written, a passing episode, something only about people, places or plans invented by the story; player character slot records are exempt from the last).
 - Rewrite with a single-record merge any record whose "after" is mostly scene description, or whose "invalidates" only says that the player character does not exist in the original, never met someone, or has no such relationship or sibling there (make it "").
@@ -9152,7 +9152,7 @@ const SCOUT_TIDY_LOCKED=`Each record has an "id" (r1, r2, ...). Records with a "
 {"merge":[{"from":["r1","r4"],"entity":"name","dimension":"stable key for the state","category":"one of survival, custody_affiliation, ability_item, key_event, identity_relationship, knowledge_anchor","change":"how it came about","after":"full current state","invalidates":"specific original fact that no longer holds, or \"\"","when":"time or unknown","core":true,"slot":""}],
  "drop":[{"id":"r3","by":"r5","reason":"short reason"}],
  "core":[{"id":"r2","core":false}]}
-"merge" may also rewrite a single record ("from" with one id) when its text is outdated. Each id may appear at most once across merge.from and drop. "by" is the id that replaces it, or "" if none. "core" lists only records NOT in merge or drop whose core flag should change. Text fields up to 500 chars; entity, dimension, when up to 120. Records you do not mention stay unchanged. Return {"merge":[],"drop":[],"core":[]} if nothing needs cleaning. No Markdown, no explanation.`;
+"merge" may also rewrite a single record ("from" with one id) when its text is outdated. Each id may appear at most once across merge.from and drop. A record that a newer record replaces or settles is never dropped: put both ids in one merge (the earlier stage goes into "change"). "drop" is only for records that are not records by the rules or that no longer hold at all; "by" is the id of a record saying exactly the same thing, otherwise "". "core" lists only records NOT in merge or drop whose core flag should change. Text fields up to 500 chars; entity, dimension, when up to 120. Records you do not mention stay unchanged. Return {"merge":[],"drop":[],"core":[]} if nothing needs cleaning. No Markdown, no explanation.`;
 function scoutTidyRecent(messages){
     const out=[];let budget=9000;
     for(const m of [...(messages||[])].reverse()){if(budget<400||out.length>=6)break;const text=String(m.text||'').slice(-Math.min(2000,budget));out.unshift({index:m.index,role:m.role,text});budget-=text.length;}
