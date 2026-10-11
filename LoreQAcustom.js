@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.5
+//@version 3.4.6
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.5';
+const LOREQA_VER = '3.4.6';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7389,9 +7389,9 @@ Compare every ledger record with the new messages. When a message ends, reverses
         locked: '뒤에 기록 번호 규칙과 JSON 출력 형식(merge / drop / core)이 자동으로 붙음. 결과에 안 나온 기록은 그대로 남음',
         def: { en: `You tidy the divergence ledger of a story set in the world of "{{source}}". The story is now at: "{{position}}".
 The records were written batch by batch while reading forward. Make the ledger describe the CURRENT state, by the same rules the records were written with:
-- The same state twice (same entity and topic, even under another key or a later name): MERGE into one. Where they differ, follow the newest; keep older details only while they are still true.
+- The same state twice (same entity and topic, even under another key or a later name): MERGE into one. Where they differ, follow the newest; keep older details only while they are still true. This includes one item recorded before and after it got its name ("unnamed sword" and "sword [name]"), and an earlier stage that a newer record has settled (a suspicion or belief that is now confirmed or disproved, a plan now carried out): merge them and keep the settled state.
 - Overturned or ended (a quarrel reconciled, someone who left a group, a finished task, a healed injury, a kept promise): rewrite it to the current state, or DROP it if nothing of it still holds. recent_story_messages shows where the story stands; use it only for this, and never drop a record just because it is not mentioned there.
-- Not a record by the rules: DROP it (an event of the original that happened as written, a passing episode, something only about people, places or plans invented by the story; player character slot records are exempt from the last).
+- Not a record by the rules: DROP it (knowledge of minor things about the player character such as her money, her fears or a habit; an event of the original that happened as written, a passing episode, something only about people, places or plans invented by the story; player character slot records are exempt from the last).
 - Rewrite with a single-record merge any record whose "after" is mostly scene description, or whose "invalidates" only says that the player character does not exist in the original, never met someone, or has no such relationship or sibling there (make it "").
 - Re-judge "core": true only for identity and lineage, alive or dead, side or group, a relationship status, and who knows the player character's identity or a central secret.
 - Keep names, slots and the records' language as they are. Never invent facts; when unsure whether two records are the same, leave them separate.
