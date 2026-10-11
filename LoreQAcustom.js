@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.1
+//@version 3.4.2
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.1';
+const LOREQA_VER = '3.4.2';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7424,12 +7424,14 @@ The last event of the original that has already happened at this point, and the 
 4. [PUBLIC]: the original world off-screen (at most {{count}} lines)
 - One line per major ORIGINAL character or faction active now: where they are and what they are doing or heading toward, as of the cut. Present tense; no backstory, motives or mechanics; nothing after the cut; nothing [NOW] or a beat already says.
 - Never say where the story's own characters are or whom they travel with, and never list them as members of a group: that changes scene by scene and is judged from the story itself. Mention them only where confirmed_changes give an original character or faction a lasting new state (a death, a defection, a new ruler).
+- Write only what anyone around them could see or has heard. Never state or hint at a fact that some characters do not know (a hidden identity, a transformation or illness, a secret plan, who someone really is, who sent whom): such facts belong in [HIDDEN] only.
 
 5. [HIDDEN]: secrets that could slip (at most 8; none is fine, never fill with weak lines)
 - A concrete fact true at the cut that some characters do not know and could let slip, reveal or act on by mistake, with who does not know and who knows. A plan already in motion that its targets do not know (who has been sent against them, a trap already laid) counts even if [NOW] mentions it.
 - Not secrets: anything placed after the cut (check when the original makes it true: memories regained, sides changed and truths learned later on are not lines here), news someone has not heard yet (a fight won, a technique learned, a place reached), unknown places, vague items ("does not know the whole story of X"), motives, mechanics, weaknesses, future plans.
 - "known to" lists only characters the original shows learning it by the cut, or that confirmed_changes say know it. Never guess who might have found out; drop a name you are not sure of, and the line if no one is sure.
-- Secrets created by the story count only if confirmed_changes state them; never invent new ones.` } },
+- Secrets created by the story count only if confirmed_changes state them; never invent new ones.
+- confirmed_changes may say that the story's own character knows a secret. It is still a secret for everyone else: keep the line and add that character to "known to".` } },
     sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
         locked: '입력: 번호 붙은 세계 상태 · 숨은 상태 · 원작 비트, 최근 이야기, 이번 유저 입력. 답은 PLACE / PRESENT / SECRETS / READY / NEAR / DONE 여섯 줄 (그대로 읽어서 나눔). 뒤에 ONSCREEN 줄(지금 장면에 들어와 있는 세계 상태 줄 번호) 요청이 자동으로 붙음',
         def: { en: `You read where a story stands right now and match it against the original work's state.
