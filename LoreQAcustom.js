@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.15
+//@version 3.3.16
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.15';
+const LOREQA_VER = '3.3.16';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -10029,7 +10029,7 @@ function loreqa_buildFlowContent(left,right){
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
     loreqa_trkToggle(secSet,'flowSceneGate','장면 판단으로 거르기','켜면 보조 모델이 지금 장면을 보고 원작 사건·비밀·화면 밖 세계 중 일부만 골라 넣음. 끄면(기본) 다가오는 원작 사건 전부를 장소·인물 조건과 함께, 비밀도 전부 넣고 어떻게 쓸지는 메인 모델이 판단. 메인 모델이 원작 사건을 엉뚱한 장면에 끌어오면 켜기');
-    loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀 중 지금 장면에 닿는 것만 골라 "모르는 인물은 알거나 암시하면 안 됨"으로 주입. 비밀은 세계 상태표에서 고르고, 장면이 바뀌면 다시 고름');
+    loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀을 "모르는 인물은 알거나 암시하면 안 됨"으로 주입 (세계 상태표의 비밀. 장면 판단으로 거르기를 켜면 지금 장면에 닿는 것만)');
     // 원작 흐름 (서사 가이드): 끔 / 원작 따라가기 / 원작 우선 / 균형 / 개변 우선 / 개변 즐기기. 끔은 compGuide=0, 나머지는 canonStance
     const stanceNow=Number(loreqa_cfg.compGuide)===1?loreqa_stance():'off';
     const STANCE_DESC={off:'세계 상태와 원작 사건을 넣지 않음',follow:'조건이 맞는 원작 사건으로 이끌고, 조건이 거의 맞는 사건 쪽으로도 기울임. 분기로 깨진 사건은 바뀐 상황에 맞는 비슷한 사건으로 대신할 수 있음',canon:'조건이 맞는 원작 사건으로 이끎. 조건을 억지로 만들지는 않음',balance:'조건이 맞는 원작 사건은 자연스러울 때만 일어남',change:'원작 사건이 바뀐 결과와 부딪히면 바뀐 쪽을 따름. 분기에 얽힌 인물은 바뀐 상황에 맞춰 움직임',free:'원작은 "원래라면 이랬다"는 참고만. 세계 전체가 바뀐 것에 반응'};
