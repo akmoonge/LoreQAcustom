@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.4
+//@version 3.4.5
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.4';
+const LOREQA_VER = '3.4.5';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7362,14 +7362,14 @@ Never record: an event of the original that happens with the same outcome, even 
 - A changed event of the original: it ended differently, did not happen, or something happened that the original never has and later scenes must respect.
 
 3. PLAYER CHARACTER SLOTS (entity = player_character; set "slot"; no canon element needed; record only what the story changed or added to the persona, never copy the persona)
-- party: which group of canon characters she travels with on a journey, or alone. One record. Not who escorts her on an errand, a shopping trip or an outing.
-- home: where she lives, who is her guardian. One record. Not whom she travels with (that is party).
+- party: which group of canon characters she travels with on a journey of days or more, or alone. One record. Not who escorts or looks after her for a day, an errand, a shopping trip or an outing: that is no party record at all. When she parts from the group, rewrite it.
+- home: where she lives, who is her guardian. One record. Never name companions or a journey here (that is party); a wanderer's home is "no fixed home".
 - standing: the name she is known by, her reputation, rank. One record.
-- items: each lasting item she obtained (a weapon, a treasure, a vault, a key object) or ability she newly gained, in the story, one record each. Not money she carries, food, sweets or small gifts; one record per thing, not one for the key and another for what it opens. Not her own techniques or powers that she simply uses (those belong to the persona), even when the story names them for the first time. Keep the same dimension when the item is later named (put the name in "after"). An item used up, given away or melted into another is rewritten to say so.
+- items: each lasting item she obtained (a weapon, a treasure, a vault, a key object) or ability she newly gained, in the story, one record each. Not money she carries, food, sweets or small gifts; one record per thing, not one for the key and another for what it opens. Not her own techniques or powers that she simply uses (those belong to the persona), even when the story names them for the first time. When the story later names an item, emit the same entity, dimension and slot with the name in "after": the name is an update, not a new item. An item used up, given away or melted into another is rewritten to say so.
 - condition: each lasting injury, curse or illness that outlasts the current arc. Rewrite it when it ends.
-- secrets: a fact of the original she has learned that changes what she does next and that the persona does not already give her: who the enemy is and what he has done, who secretly wants what, who someone really is (including her own true parentage when the story reveals it). Not ordinary events or someone's life story (a sealing, an awakening, a battle, a childhood, how a weapon works, that a famous monster exists), not where people are going, and nothing about people or plans invented by the story. The dimension names the fact itself, so two facts about the same person stay two records. Usually only a few. A secret she heard at an original event she was part of goes in the events slot instead.
+- secrets: a fact of the original she has learned that changes what she does next and that the persona does not already give her: who the enemy is and what he has done, who secretly wants what, who someone really is (including her own true parentage when the story reveals it). Not ordinary events or someone's life story (a sealing, an awakening, a battle, a childhood, how a weapon works, that a famous monster or treasure exists or where it lies), not where people are going, and nothing about people or plans invented by the story: a plan by a generic group (demon slayers, bandits, soldiers, an official) is invented unless the story clearly means the original's own group. The dimension names the fact itself, so two facts about the same person stay two records. Usually only a few. A secret she heard at an original event she was part of goes in the events slot instead.
 - promises: each promise, debt or goal that involves a canon character. Rewrite it when kept or dropped.
-- events: the original's events she was directly part of, even when they ended as in the original: an event the original's chapter summaries would name (a confrontation, a revelation, a battle, a rescue), not lessons, meals, daily life or travel. One record; write only the event lines that are new in these messages, one short line each: "<event> (<place>): what she learned there, what she did", in one sentence. The plugin adds them to the earlier lines, so never repeat old lines. In "review", give every original event in these messages that she was part of its own line saying so, even when it went as in the original, and turn it into this record.
+- events: the original's events she was directly part of, even when they ended as in the original: an event the original's chapter summaries would name (a confrontation, a revelation, a battle, a rescue), not lessons, meals, daily life or travel, and not a scene the story invented, even when canon characters are in it. One record; write only the event lines that are new in these messages, one short line each: "<event> (<place>): what she learned there, what she did", in one sentence. The plugin adds them to the earlier lines, so never repeat old lines. In "review", give every original event in these messages that she was part of its own line saying so, even when it went as in the original, and turn it into this record.
 Where she is, whom she travels with and what she carries are written only here, never in canon characters' records. A fact only about her that fits no slot (her fears, her worst nightmare, her past) is not a record.
 
 4. KEEP THE LEDGER TRUE
@@ -7382,6 +7382,7 @@ Compare every ledger record with the new messages. When a message ends, reverses
 - change: how it came about, in one sentence.
 - invalidates: the fact of the original that this record overturns, other than the player character's existence (e.g. "[canon smith] forges swords for no one else"). Leave it "" when the only point is that she exists, that someone met her or knows who she is, or that the original has no such relationship or sibling: the persona already says so. This includes knowledge records such as "[canon character] knows she is [canon hero]'s sister".
 - Nothing beyond the evidence: every detail (which parent, a title, a place, a reason) must be in the quoted messages or the persona. Never fill a gap from the original.
+- A character's inner thoughts shown by the narration or a status panel (a thought line next to their name, an emoji with a quoted thought) are not evidence that the character knows, says or decides anything. Only what happens and what is said in the story counts.
 - core: true only for what the writer must never contradict in any scene: identity and lineage, alive or dead, side or group, a relationship status (family, enmity, alliance, romance), and who knows the player character's identity or a central secret. Everything else false.
 - Write every field in story_language (the language of the story's messages), not in the language of these instructions, of the persona or of anyone reading the ledger. The [bracketed] names above are placeholders, never copy them.` } },
     tidy: { label: '분기 장부 정리', ph: ['source', 'position'],
@@ -8772,7 +8773,11 @@ function scoutClean(text) {
 // Risu 브랜치 기능이 갈라진 지점 바로 뒤에 넣는 숨김 표식: {{specialcomment::branchedfrom::<부모 채팅 id>::<부모 이름>::<분기 메시지 id>::}}
 const LOREQA_BRANCH_MARK = '{{specialcomment::branchedfrom::';
 const loreqa_isBranchMark = m => m?.disabled === true && typeof m.data === 'string' && m.data.trim().startsWith(LOREQA_BRANCH_MARK);
-function scoutText(msg) {
+// 이야기가 아닌 덩어리: 다른 플러그인의 작성 메모(<reasoning>, <thinking>)와 삽화 HTML(class="am-…")
+const scoutNoise = t => String(t || '').replace(/<(reasoning|thinking|think)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<(div|span)\b[^>]*\bclass="am-[^"]*"[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<img\b[^>]*>/gi, '');
+function scoutText(msg) { return scoutNoise(scoutTextKeep(msg)); }
+// 걸러내기 전 텍스트: 이 기능 이전에 저장된 근거 해시를 계속 인정하기 위해서만 쓴다
+function scoutTextKeep(msg) {
     if (loreqa_isBranchMark(msg)) return ''; // 표식은 대화 내용이 아니다. 자리(번호)는 남겨 기존 기록의 번호가 밀리지 않게 한다
     const selected=Array.isArray(msg?.swipes)&&msg.swipes.length?msg.swipes[Number.isInteger(msg.swipeId)?msg.swipeId:msg.swipes.length-1]:null;
     const value = typeof selected==='string'?selected:(msg?.data ?? msg?.content ?? '');
@@ -9033,7 +9038,7 @@ function scoutCompleted(snap){
     const isReply=m=>['char','assistant'].includes(m?.role);
     let end=snap.list.length;while(end>0&&!isReply(snap.list[end-1]))end--;
     if(Number(loreqa_cfg.ledgerDeferLatest??1)===1&&end>0){end--;while(end>0&&!isReply(snap.list[end-1]))end--;}
-    return snap.list.slice(0,end).map((m,index)=>({index,role:m.role,text:scoutText(m),legacy:scoutTextLegacy(m)}));
+    return snap.list.slice(0,end).map((m,index)=>({index,role:m.role,text:scoutText(m),legacy:scoutTextLegacy(m),keep:scoutTextKeep(m)}));
 }
 // 메시지 지문: 공백·줄바꿈·태그·전각/반각·마크다운 기호 차이는 무시한다. GigaTrans 가 읽은 뒤 원문을 <GigaTrans> 안으로 옮기면서
 //   앞뒤 공백 등이 달라져, 매 턴 마지막 메시지를 '바뀜'으로 보고 다시 읽던 문제. 내용이 바뀐 수정·리롤은 그대로 잡힌다.
@@ -9041,7 +9046,7 @@ const scoutHashNorm=t=>String(t||'').normalize('NFKC').replace(/<[^>]*>/g,'').re
 const scoutMessageHash=m=>scoutHash(JSON.stringify([m.role,scoutHashNorm(m.text)]));
 // 새 해시 또는 (원문 추출 도입 전) 구 해시 중 하나라도 맞으면 같은 메시지로 인정
 // 예전 지문(정규화 전: 원문 그대로 / GigaTrans 원문 추출 전)도 인정한다. 업데이트로 처음부터 다시 읽지 않게
-const scoutHashMatch=(h,m)=>!!m&&(h===scoutMessageHash(m)||h===scoutHash(JSON.stringify([m.role,m.text]))||(typeof m.legacy==='string'&&m.legacy!==m.text&&(h===scoutHash(JSON.stringify([m.role,m.legacy]))||h===scoutHash(JSON.stringify([m.role,scoutHashNorm(m.legacy)])))));
+const scoutHashMatch=(h,m)=>!!m&&(h===scoutMessageHash(m)||(typeof m.keep==='string'&&m.keep!==m.text&&h===scoutMessageHash({role:m.role,text:m.keep}))||h===scoutHash(JSON.stringify([m.role,m.text]))||(typeof m.legacy==='string'&&m.legacy!==m.text&&(h===scoutHash(JSON.stringify([m.role,m.legacy]))||h===scoutHash(JSON.stringify([m.role,scoutHashNorm(m.legacy)])))));
 async function scoutLedgerLoad(scope){
     const raw=await risuai.pluginStorage.getItem(scoutLedgerKey(scope));
     if(!raw)return{schema:1,scope,revision:0,hashes:[],events:[],excluded:[]};
