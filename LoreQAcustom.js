@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.0
+//@version 3.4.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.0';
+const LOREQA_VER = '3.4.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -93,6 +93,7 @@ const LOREQA_DEFAULTS = {
     worldCount: 8,     // 세계 상태표의 공개 상태 줄 수 (주요 인물·세력)
     beatCount: 5,      // 세계 상태표의 원작 비트 수 (조건 붙은 다음 원작 사건)
     sceneTurns: 3,     // 장면 판단이 읽을 최근 턴 수 (원클릭 세팅 계산기로도 정함)
+    posPrevAnchor: 1,  // 위치 판정에 직전 위치를 알려 주고, 진행 단서가 있을 때만 옮기게 한다
     flowStyle: 'beats', // 전개 방식: beats = 비트 모드 (세계 상태표 + 조건 붙은 원작 비트) / list = 목록 모드 (3.2.16 이전: 시점 가드 목록 + 다음 원작 사건 목록)
     flowSceneGate: 0,  // 1 = 장면 판단이 비트(READY)·비밀·화면 밖 줄을 골라 넣음 (3.2.17~3.3.14 방식) / 0 = 전부 조건과 함께 넣고 메인 모델이 판단 (기본)
     canonStance: 'balance', // 원작 흐름 성향: follow | canon | balance | change | free (끔은 compGuide=0)
@@ -8138,10 +8139,12 @@ Line 4: "Source: " followed by the site or page you relied on.
 No other text.`;
     // 날짜와 대화 내용을 함께 준다. 연표가 엉성한 원작이 많아 날짜만으로는 못 찾고,
     //   대화 내용만 주면 RP 장면과 비슷한 원작 대목으로 끌려가므로, 둘의 쓰임새를 지시문으로 갈라 둔다.
+    const prevAnchor = Number(loreqa_cfg.posPrevAnchor ?? 1) === 1 && st.cur && !st.rejudge ? st.cur : null;
     let basis = `최근 ${readN}턴 (메시지 ${readList.length}개)` + (readC > 0 && joined.length > readC ? ` (뒤 ${readC.toLocaleString()}자)` : '') + (times.length ? ` + 극중 날짜 ${times[0]}` : '') + ' 기준';
     const system = loreqa_prompt('pos', { source: loreqa_cfg.source }, false) + `
-${labelRule} Answer exactly "unknown" only if the chat has nothing to do with this work.` + await loreqa_flowOcRule();
-    const user = JSON.stringify({ work: loreqa_cfg.source, in_story_date_latest_first: times, recent_chat: recent, ...(await loreqa_ctxExtras('flow')) });
+${labelRule} Answer exactly "unknown" only if the chat has nothing to do with this work.` + (prevAnchor ? `
+PREVIOUS POINT: previous_point is where this story was placed last time. Stories move forward a little at a time, so start from it. Keep it unless recent_chat shows that the story has moved past it: an original event of a later chapter has happened or is spoken of as past, a new season, term or year, a time skip, or characters who only appear later in the original. A scene that merely resembles another chapter (the same villain, a similar fight, a similar place) is never a reason to move. When you move forward, it is usually to the next few chapters.` : '') + await loreqa_flowOcRule();
+    const user = JSON.stringify({ work: loreqa_cfg.source, ...(prevAnchor ? { previous_point: st.cur.label } : {}), in_story_date_latest_first: times, recent_chat: recent, ...(await loreqa_ctxExtras('flow')) });
 
     try {
         const [bt, bp] = loreqa_flowApi();
@@ -10155,6 +10158,7 @@ function loreqa_buildFlowContent(left,right){
     // 자주 만지는 것 → 시간 점프 → 모델·검색 → 캐릭터 & 보정 → 접힌 세부(숫자·상한) 순서
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
+    loreqa_trkToggle(secSet,'posPrevAnchor','직전 위치에서 출발','위치 판정에 직전 위치를 알려 주고, 이야기에서 원작이 진행된 단서가 있을 때만 옮기게 함. 끄면 매번 최근 대화만 보고 새로 판정 (장면이 비슷한 엉뚱한 화로 튀기 쉬움)');
     loreqa_trkToggle(secSet,'flowSceneGate','장면 판단으로 거르기','켜면 보조 모델이 지금 장면을 보고 원작 사건·비밀·화면 밖 세계 중 일부만 골라 넣음. 끄면(기본) 다가오는 원작 사건 전부를 장소·인물 조건과 함께, 비밀도 전부 넣고 어떻게 쓸지는 메인 모델이 판단. 메인 모델이 원작 사건을 엉뚱한 장면에 끌어오면 켜기');
     loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀을 "모르는 인물은 알거나 암시하면 안 됨"으로 주입 (세계 상태표의 비밀. 장면 판단으로 거르기를 켜면 지금 장면에 닿는 것만)');
     // 원작 흐름 (서사 가이드): 끔 / 원작 따라가기 / 원작 우선 / 균형 / 개변 우선 / 개변 즐기기. 끔은 compGuide=0, 나머지는 canonStance
