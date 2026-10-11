@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.3.14
+//@version 3.3.15
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.3.14';
+const LOREQA_VER = '3.3.15';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -93,6 +93,7 @@ const LOREQA_DEFAULTS = {
     worldCount: 8,     // 세계 상태표의 공개 상태 줄 수 (주요 인물·세력)
     beatCount: 5,      // 세계 상태표의 원작 비트 수 (조건 붙은 다음 원작 사건)
     sceneTurns: 3,     // 장면 판단이 읽을 최근 턴 수 (원클릭 세팅 계산기로도 정함)
+    flowSceneGate: 0,  // 1 = 장면 판단이 비트(READY)·비밀·화면 밖 줄을 골라 넣음 (3.2.17~3.3.14 방식) / 0 = 전부 조건과 함께 넣고 메인 모델이 판단 (기본)
     canonStance: 'balance', // 원작 흐름 성향: follow | canon | balance | change | free (끔은 compGuide=0)
     sceneSecretMax: 4, // 시점 가드: 장면마다 고르는 숨은 상태 수
     guideStrength: 0,  // (구버전) 0=참고만, 1=유도. canonStance 로 바뀜 (참고만 → 균형, 유도 → 원작 우선)
@@ -7943,7 +7944,8 @@ async function loreqa_prepareTurn() {
         const sc = bucket.scene || {}, playedNow = Array.isArray(bucket.played) ? bucket.played : [];
         if (useGuard) {
             // 시점 가드: 숨은 상태 중 이 장면에 닿는 것만 (넣는 비밀이 적을수록 '코끼리' 효과도 적다)
-            const hidden = W?.hidden || [], picks = hidden.length ? (sc.picks || []) : [];
+            const gate = Number(cfg.flowSceneGate ?? 1) !== 0;
+            const hidden = W?.hidden || [], picks = hidden.length ? (gate ? (sc.picks || []) : hidden.map((_, i) => i)) : [];
             t.guard = picks.map(i => hidden[i]).filter(Boolean).map(l => '- ' + l).join('\n');
             loreqa_stageSet({ guard: !W ? '✗' : t.guard ? `✓ ${picks.length}개` : '해당 없음' });
         } else loreqa_stageSet({ guard: '끔' });
@@ -7952,12 +7954,13 @@ async function loreqa_prepareTurn() {
             //   원작 따라가기는 조건이 거의 맞는 비트와 분기로 깨진 비트도 넣는다. 시간 점프 턴에도 빼지 않고 '점프 전 기준' 안내만 붙인다
             const stance = loreqa_stance(), live = x => !playedNow.includes(x);
             // 지금 장면에 들어와 있는 원작 인물·세력의 줄은 뺀다: 원작 기준 위치가 이야기와 어긋난다 (장면 판단의 ONSCREEN)
-            const onscreen = Array.isArray(sc.onscreen) ? sc.onscreen : [];
+            const onscreen = Number(cfg.flowSceneGate ?? 1) !== 0 && Array.isArray(sc.onscreen) ? sc.onscreen : [];
             t.guide = (W?.pub || []).filter(l => !onscreen.includes(l)).map(l => '- ' + l).join('\n');
             // 원작 결말(then:)은 원작 따라가기 · 원작 우선에서만 넣는다. 균형 이하에서 결말을 알려 주면 그쪽으로 끌려간다
             const withThen = stance === 'follow' || stance === 'canon';
             const show = x => { const b = (W?.beats || []).find(y => y.text === x); if (!b || withThen || !b.then) return x; return x.replace(/\s*\/\s*then\s*[:：].*?(?=\s*\(broken\b|$)/i, ''); };
-            t.beatsReady = (sc.ready || []).filter(live).map(show);
+            if (Number(cfg.flowSceneGate ?? 1) === 0) t.beatsAll = (W?.beats || []).map(b => b.text).filter(live).map(show);
+            t.beatsReady = Number(cfg.flowSceneGate ?? 1) === 0 ? [] : (sc.ready || []).filter(live).map(show);
             t.beatsNear = stance === 'follow' ? (sc.near || []).filter(x => live(x) && !(sc.ready || []).includes(x)).map(show) : [];
             t.beatsBroken = stance === 'follow' ? (W?.beats || []).filter(b => b.broken && live(b.text)).map(b => b.text) : [];
             loreqa_stageSet({ guide: W ? `✓ 비트 ${t.beatsReady.length}개` : '✗' });
@@ -9838,11 +9841,12 @@ function loreqa_injectUnified(messages, t) {
         loreqa_insertSystemSafely(messages, c, '분기 주입');
         inj.div = c;
     }
-    if (t.guide || t.beatsReady?.length) {
+    if (t.guide || t.beatsReady?.length || t.beatsAll?.length) {
         const lead = loreqa_prompt((LOREQA_STANCES.find(x => x[0] === loreqa_stance()) || LOREQA_STANCES[2])[2], {}, ko);
         const sec = (title, lines) => lines?.length ? '\n\n' + title + '\n' + lines.map(l => '- ' + l).join('\n') : '';
         const c = LOREQA_GUIDE_BLOCK + '\n' + lead
             + (t.guide ? '\n\n' + (ko ? '# 세계 상태 (화면 밖)' : '# World state (off-screen)') + '\n' + t.guide : '')
+            + sec(ko ? '# 다가오는 원작 사건 (각 사건은 적힌 장소(at)에 적힌 인물(present)이 모였을 때만 시작된다. 지금 장면에 그 조건이 없으면 화면 밖에서 진행되고, 이 장면에는 소식이나 결과로만 닿는다)' : '# Upcoming original events (each starts only where its at: place and present: people come together in this story; if they are not in the current scene, it happens off-screen and reaches this scene only as news or consequences)', t.beatsAll)
             + sec(ko ? '# 지금 일어날 수 있는 원작 사건' : '# Original events that could happen now', t.beatsReady)
             + sec(ko ? '# 조건이 거의 맞는 원작 사건' : '# Original events almost ready', t.beatsNear)
             + sec(ko ? '# 분기로 깨진 원작 사건' : '# Original events broken by the changes', t.beatsBroken)
@@ -10024,6 +10028,7 @@ function loreqa_buildFlowContent(left,right){
     // 자주 만지는 것 → 시간 점프 → 모델·검색 → 캐릭터 & 보정 → 접힌 세부(숫자·상한) 순서
     const secSet=scoutSection('전개 설정');
     loreqa_trkToggle(secSet,'compPosition','위치 추적','현재 원작 시점을 유지');
+    loreqa_trkToggle(secSet,'flowSceneGate','장면 판단으로 거르기','켜면 보조 모델이 지금 장면을 보고 원작 사건·비밀·화면 밖 세계 중 일부만 골라 넣음. 끄면(기본) 다가오는 원작 사건 전부를 장소·인물 조건과 함께, 비밀도 전부 넣고 어떻게 쓸지는 메인 모델이 판단. 메인 모델이 원작 사건을 엉뚱한 장면에 끌어오면 켜기');
     loreqa_trkToggle(secSet,'compGuard','시점 가드','이 시점에 이미 있는 비밀 중 지금 장면에 닿는 것만 골라 "모르는 인물은 알거나 암시하면 안 됨"으로 주입. 비밀은 세계 상태표에서 고르고, 장면이 바뀌면 다시 고름');
     // 원작 흐름 (서사 가이드): 끔 / 원작 따라가기 / 원작 우선 / 균형 / 개변 우선 / 개변 즐기기. 끔은 compGuide=0, 나머지는 canonStance
     const stanceNow=Number(loreqa_cfg.compGuide)===1?loreqa_stance():'off';
