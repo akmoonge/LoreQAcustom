@@ -154,6 +154,13 @@ comments are Korean.
   Source). Keys `n:<nums>`, `pre:` (before the original starts), `post:`.
 - Backward moves are held once (`st.backCand`) and accepted only if the next judgement
   agrees; "지금 판정" and manual set bypass this.
+- 전개 방식 `flowStyle` (3.4.0): 'beats' = 비트 모드 (세계 상태표, below) / 'list' = 목록 모드, the 3.2.16 behaviour
+  restored verbatim: per position `loreqa_generateGuard` (prompt `guard`, bucket.secrets) + `loreqa_generateGuide` (prompt
+  `guide`, `guideCount` events marked [as canon]/[changed]/[impossible], bucket.guide, regenerated when the ledger count
+  changes, skipped on a time-jump turn), injected whole with lead `guideSteer` (follow/canon) or `guideRef`. Only change:
+  written in the story language and fed `loreqa_divFor('world')`. `flowSceneGate` (beats mode, default 0 since 3.3.15):
+  0 = all beats with at/present conditions + all secrets + whole PUBLIC, main model decides; 1 = scene judge picks
+  (READY / SECRETS / ONSCREEN). A harness A/B (testdata/harness/gen.js) showed no pull-in either way.
 - World table prompt (3.3.1): all content rules (source/search, NOW, BEATS, PUBLIC, HIDDEN) are in the editable
   `world` prompt in numbered sections; the locked `LOREQA_WORLD_FORMAT` is only the four-tag line format.
 - 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
