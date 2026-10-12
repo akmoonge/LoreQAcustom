@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.12
+//@version 3.4.13
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.12';
+const LOREQA_VER = '3.4.13';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -10365,7 +10365,9 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
     loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
-    briefSec.append(briefBtns,briefMore,pre);right.appendChild(briefSec);
+    pre.style.minHeight='120px';
+    // 위치 카드(세계 상태표) 바로 아래: 같이 보며 비교하는 칸이라 왼쪽으로 옮김. 번역은 보기용
+    briefSec.append(briefBtns,briefMore,pre,loreqa_trBox(()=>/^(아직 조회하지|현재 장면과 과거)/.test(scoutReport||'')?'':scoutReport));left.insertBefore(briefSec,qaSec);
 }
 // (구 원작 추적 창 호환)
 function loreqa_buildTrackContent(left,right){loreqa_buildFlowContent(left,right);loreqa_buildBranchContent(left,right);}
