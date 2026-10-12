@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.1
-//@version 3.9.1
+//@display-name 원작견 개조판 v3.9.2
+//@version 3.9.2
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.1';
+const LOREQA_VER = '3.9.2';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5418,7 +5418,7 @@ async function loreqa_floatRemove() {
 async function loreqa_callLLM(messages, enableSearch = false, overrideApiType = null, overrideProfile = null, mcpSearchEnabled = false, mcpOnly = false, requestOptions = {}) {
     const apiType = overrideApiType || loreqa_cfg.apiType || 'gemini';
     const profile = overrideProfile || loreqa_getProfile();
-    const qaName = { char: '인물 Q&A', set: '세계관 Q&A' }[loreqa_activeMode];
+    const qaName = { char: '인물 Q&A', set: '세계관 Q&A' }[requestOptions?.mode || loreqa_activeMode];
     const step = requestOptions?.step || (requestOptions?.ledgerJson ? '분기 추출' : qaName || '보조 호출');
     const c = loreqa_floatStart(step, apiType, profile, requestOptions);
     try { const r = await loreqa_callLLMRaw(messages, enableSearch, overrideApiType, overrideProfile, mcpSearchEnabled, mcpOnly, requestOptions); loreqa_floatEnd(c, r); return r; }
@@ -7215,10 +7215,9 @@ const LOREQA_PC_SLOTS = {
 };
 // 칸 이름을 항목에 적었는데 칸 표시가 다르면(예: 항목 'party', 칸 standing) 항목 쪽을 따른다
 const loreqa_slotOf = e => {
-    if (!e) return '';
-    const d = String(e.dimension || '').trim().toLowerCase(), hit = d && Object.entries(LOREQA_PC_SLOTS).find(([k, o]) => d === k || d === o.ko || d === o.en);
-    if (hit) return hit[0];
-    return Object.prototype.hasOwnProperty.call(LOREQA_PC_SLOTS, e.slot) ? e.slot : '';
+    if (!e || !Object.prototype.hasOwnProperty.call(LOREQA_PC_SLOTS, e.slot)) return '';
+    const d = String(e.dimension || '').trim().toLowerCase(), hit = Object.entries(LOREQA_PC_SLOTS).find(([k, o]) => d === k || d === o.ko || d === o.en);
+    return hit ? hit[0] : e.slot;
 };
 // 주인공 칸 '함께한 원작 사건': 모델은 새 사건 줄만 쓰고, 코드가 앞 기록의 줄 뒤에 붙인다 (모델이 긴 목록을 다시 쓰면 옛 줄을 빠뜨린다).
 //   글자 수 상한(pcEventsChars)을 넘으면 오래된 줄부터 뺀다. 같은 줄은 한 번만
@@ -7579,11 +7578,9 @@ async function loreqa_prepareTurn() {
                     const thr = loreqa_offscreenHours();
                     if (thr && Number.isFinite(r.hours)) {
                         st.offClock = (st.offClock || 0) + r.hours; st.offAt = replies;
-                        const candidates = (W.beats || []).filter(b => (r.offdone || []).includes(b.text));
-                        let moved = false;
-                        for (const next of candidates) {
-                            if (st.offClock < thr) break;
-                            st.offClock -= thr;
+                        const next = st.offClock >= thr && (W.beats || []).find(b => (r.offdone || []).includes(b.text));
+                        if (next) {
+                            st.offClock = 0;
                             bucket.played = [...new Set([...(bucket.played || []), next.text])].slice(-30);
                             st.offscreen = [...(st.offscreen || []), { text: next.event + (next.then ? ' → ' + next.then : ''), at: replies, from: st.cur.label }].slice(-20);
                             const chap = (String(next.text).match(/^\(([^)]+)\)/) || [])[1];
@@ -7591,13 +7588,10 @@ async function loreqa_prepareTurn() {
                                 const label = `${chap} (화면 밖 진행)`;
                                 st.cur = { key: loreqa_posKey(label), label, source: 'offscreen', at: Date.now() };
                                 t.pos = st.cur;
-                                moved = true;
                                 loreqa_stat('flow.offscreenMove');
                             }
                             loreqa_stat('flow.offscreenDone');
                         }
-                        if (moved) st.offClock = 0;
-                        else if (st.offClock >= thr) st.offClock = thr - 0.01;
                     }
                 } else bucket.scene = { gen, w: wsig, at: replies, place: '', present: '', picks: (W.hidden || []).map((_, i) => i), ready: [], near: [], done: [], onscreen: [], skipped: true };
                 dirty = true;
