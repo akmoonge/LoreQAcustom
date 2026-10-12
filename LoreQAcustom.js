@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 통합판 (프로토타입)
-//@version 3.8.2
+//@display-name 원작견 개조판 v3.8.3
+//@version 3.8.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.8.2';
+const LOREQA_VER = '3.8.3';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3279,7 +3279,7 @@ function loreqa_promptSection(keys) {
 
 let loreqa_syncPower = null; // 기본 탭에서 활성화를 바꾸면 머리의 전체 ON/OFF 표시도 맞춘다
 function loreqa_buildTabs(p) {
-    p.title.textContent = '원작견'; p.title.title = 'v' + LOREQA_VER;
+    p.title.textContent = '원작견 개조판 v' + LOREQA_VER; p.title.title = 'v' + LOREQA_VER;
     // ── 머리: 세 모드 단추 ──
     const chips = document.createElement('div'); chips.className = 'loreqa-mode-chips';
     const panes = {};
@@ -10705,7 +10705,7 @@ async function loreqa_registerHotkey() {
 
         await loreqa_registerHotkey();
 
-        console.log('[LoreQA] 원작견 통합판 v' + LOREQA_VER + ' 로드 완료.');
+        console.log('[LoreQA] 원작견 개조판 v' + LOREQA_VER + ' 로드 완료.');
     } catch (error) {
         console.error('[LoreQA] 초기화 실패:', error);
     }

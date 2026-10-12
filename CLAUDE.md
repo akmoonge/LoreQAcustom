@@ -1,4 +1,4 @@
-# LoreQAcustom — 원작견 통합판 (RisuAI plugin)
+# LoreQAcustom — 원작견 개조판 (RisuAI plugin)
 
 One-file RisuAI plugin (`LoreQAcustom.js`, Plugin API 3.0). It merges the original
 원작견 (LoreQA v2.13) with a modified CanonScout (원작 사전정보) build, for AU / OC fan
@@ -14,6 +14,7 @@ comments are Korean.
 - **Never change `//@name`.** Risu refuses updates whose name differs.
 - `//@version` must be numbers and dots only (Risu splits on `.` and casts to Number;
   any letters make that part 0). Bump it on every push to main, or the update never shows.
+  `//@display-name` is "원작견 개조판 vX.Y.Z": bump the number there too (it is what Risu's plugin list shows).
   Bump `const LOREQA_VER` (line ~8) to the same number: it is the only way to see the installed version (console
   "로드 완료" line, tooltip on the settings window title); Risu's plugin list shows no version.
 - raw.githubusercontent caches for ~5 minutes.
