@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.5.0
+//@version 3.5.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.5.0';
+const LOREQA_VER = '3.5.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5836,7 +5836,7 @@ function loreqa_floatEnd(c, result, error) {
     const text = typeof result === 'string' ? result : result?.text;
     c.ok = !error && !!String(text || '').trim();
     const u = loreqa_formatUsage(result?.usage);
-    c.out = u ? u.output : null; c.think = loreqa_thinkTokens(result?.usage);
+    c.out = u ? u.output : null; c.in = u ? u.input : null; c.think = loreqa_thinkTokens(result?.usage);
     if (!c.ok) c.err = String(error?.message || error || loreqa_state?.lastError || '빈 응답').slice(0, 120);
     loreqa_floatKick();
 }
@@ -5854,7 +5854,7 @@ function loreqa_floatHtml() {
         else if (!c.ok) line = `<span style="color:#f38ba8">실패</span> · ${sec.toFixed(1)}초<div style="color:#f38ba8;font-size:11px">${loreqa_esc(c.err)}</div>`;
         else {
             const tps = c.out && sec > 0 ? ` · ${(c.out / sec).toFixed(0)} t/s` : '';
-            line = `<span style="color:#a6e3a1">완료</span>${c.out != null ? `: 출력 ${c.out.toLocaleString()}토큰` : ''}${c.think != null ? ` (생각 ${c.think.toLocaleString()})` : ''} · ${sec.toFixed(1)}초${tps}`;
+            line = `<span style="color:#a6e3a1">완료</span>${c.in != null || c.out != null ? ': ' + [c.in != null ? `입력 ${c.in.toLocaleString()}` : '', c.out != null ? `출력 ${c.out.toLocaleString()}` : ''].filter(Boolean).join(' · ') + '토큰' : ''}${c.think != null ? ` (생각 ${c.think.toLocaleString()})` : ''} · ${sec.toFixed(1)}초${tps}`;
         }
         return `<div title="끌어서 옮기기" style="pointer-events:auto;cursor:move;user-select:none;touch-action:none;background:rgba(17,17,27,.92);border:1px solid #313244;border-radius:8px;padding:6px 10px;color:#cdd6f4;font:12px/1.45 sans-serif;width:240px;box-shadow:0 2px 8px rgba(0,0,0,.35)">`
             + `<div style="font-weight:600">LoreQA · ${loreqa_esc(c.step)}</div>`
