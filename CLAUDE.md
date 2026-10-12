@@ -51,6 +51,12 @@ comments are Korean.
 - Modes / header chips: 인물 (char), 세계관 (set), 분기 (branch = divergence ledger),
   전개 (flow = position + 시점 가드 + 서사 가이드). Tabs: 현황판 / 인물모드 / 세계관모드 /
   분기모드 / 전개모드 / 원클릭 세팅 / 기본·프리셋 / 지침·자료 / API·MCP.
+- 원클릭 세팅 tab, first section 질문으로 설정 만들기 (3.9.0, `loreqa_buildQuickSurvey`): work name + 7 five-option questions
+  (`LOREQA_SURVEY`: fame, stance, player character, time frame, context, reply length, helper cost) + story language ->
+  `loreqa_surveyPlan` (fame tier base from `LOREQA_FAME`, stance, OC rule / persona, AU turns flow mode off, after-ending
+  turns the guide off, PDF on for Gemini/Vertex at cost <= 3, position-judge interval by cost) and `loreqa_surveyValues`
+  (the calculator with prompt = 40%, input = reply / 4, then cost multipliers on batch / tidy) -> diff list -> saved as a
+  preset and applied, with the "대략적인 추천 설정값" note. Mostly guesses; the measured parts are noted in the code.
 - 원클릭 세팅 tab: 작품 인지도 (`loreqa_buildQuickFame`, table `LOREQA_FAME`: mode chips and
   branch/flow sub-feature on/off only; `loreqa_applyFame` shows the diff; `fameTier` +
   `loreqa_fameDirty` show "(수정됨)") and 내 사용 환경 (`loreqa_buildQuickEnv`: context /
