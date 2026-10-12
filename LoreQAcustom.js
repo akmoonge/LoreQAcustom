@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.8.4
-//@version 3.8.4
+//@display-name 원작견 개조판 v3.8.5
+//@version 3.8.5
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.8.4';
+const LOREQA_VER = '3.8.5';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3658,6 +3658,21 @@ async function loreqa_renderStatus() {
 }
 // ── 보기용 한국어 번역: 버튼을 눌렀을 때만 전개모드 API로 번역해 아래에 보여 준다. 저장 · 주입하지 않고 메모리에만 둔다 ──
 const loreqa_trCache = new Map(); // 원문 → 번역
+// 번역은 저장소에도 남긴다 (원문 해시 → 번역, 최근 300개): 앱을 다시 켜도 보이게
+const LOREQA_TR_KEY = 'loreqacustom_trcache';
+let loreqa_trStore = null;
+async function loreqa_trLoad() {
+    if (loreqa_trStore) return loreqa_trStore;
+    try { const raw = await risuai.pluginStorage.getItem(LOREQA_TR_KEY); loreqa_trStore = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {}; } catch (e) { loreqa_trStore = {}; }
+    return loreqa_trStore;
+}
+async function loreqa_trSave(src, t) {
+    const st = await loreqa_trLoad(); const k = scoutHash(src);
+    delete st[k]; st[k] = t;
+    const keys = Object.keys(st); for (const old of keys.slice(0, Math.max(0, keys.length - 300))) delete st[old];
+    try { await risuai.pluginStorage.setItem(LOREQA_TR_KEY, JSON.stringify(st)); } catch (e) {}
+}
+const loreqa_trGet = src => loreqa_trCache.get(src) || (loreqa_trStore && loreqa_trStore[scoutHash(src)]) || '';
 async function loreqa_translate(text, extra = '') {
     const [bt, bp] = loreqa_flowApi();
     const out = await loreqa_callLLM([{ role: 'system', content: loreqa_prompt('translate', { source: loreqa_cfg.source || '' }, false) + extra }, { role: 'user', content: text }], false, bt, bp, false, false, { silent: true, step: '번역' });
@@ -3669,7 +3684,7 @@ function loreqa_trBox(getText) {
     const wrap = loreqa_el('div'); wrap.style.marginTop = '4px';
     const out = loreqa_el('pre', 'loreqa-pre');
     const show = t => { out.textContent = t || ''; out.style.display = t ? '' : 'none'; };
-    const cached = loreqa_trCache.get(String(getText() || '').trim());
+    const cached = loreqa_trGet(String(getText() || '').trim());
     show(cached);
     const b = loreqa_btn(cached ? '번역 다시' : '한국어로 번역', async () => {
         const src = String(getText() || '').trim();
@@ -3677,7 +3692,7 @@ function loreqa_trBox(getText) {
         b.disabled = true; show('번역 중…');
         let t = '';
         try { t = await loreqa_translate(src); } catch (e) {}
-        if (t) loreqa_trCache.set(src, t);
+        if (t) { loreqa_trCache.set(src, t); loreqa_trSave(src, t); }
         show(t || '✗ 번역 실패: ' + (loreqa_state?.lastError || '빈 응답'));
         b.disabled = false; b.textContent = '번역 다시';
         if (!wrap.isConnected && t) loreqa_renderStatus(); // 기다리는 사이 창이 다시 그려졌으면 새 칸에 보여 준다
@@ -9699,6 +9714,8 @@ async function loreqa_ledgerTranslate(scope) {
         for (const line of out.split('\n')) { const m = line.match(/^\s*\[(\d+)\]\s*(.+)$/); if (m) got.set(Number(m[1]), m[2].trim()); }
         part.forEach((e, k) => { const t = got.get(k + 1); if (t) { loreqa_ledgerTr.set(e.id, { src: loreqa_ledgerTrSrc(e), t }); done++; } else failed++; });
     }
+    // 장부에 남긴다 (앱을 다시 켜도 보이게). 기록 본문과 따로 두어 모델에는 들어가지 않는다
+    await scoutLedgerSerial(async () => { const l2 = await scoutLedgerLoad(scope); const tr = {}; for (const e of l2.events) { const v = loreqa_ledgerTr.get(e.id) || l2.tr?.[e.id]; if (v) tr[e.id] = v; } l2.tr = tr; await scoutLedgerSave(l2); });
     return { done, failed };
 }
 async function scoutLedgerPanel(){
@@ -9805,7 +9822,7 @@ async function scoutLedgerPanel(){
            if(cf&&!scoutLocked(event)){const cb=document.createElement('input');cb.type='checkbox';cb.checked=pick.has(event.id);cb.title='점검 이유대로 고칠 기록으로 체크 (위 "체크한 기록 고치기")';cb.style.cssText='margin:0 4px 0 0;vertical-align:middle';
              cb.addEventListener('click',ev=>{ev.stopPropagation();if(cb.checked)pick.add(event.id);else pick.delete(event.id);fixLabel();});summary.prepend(cb);}const t=document.createElement('div');t.style.cssText='font-size:11px;margin:2px 0 0 14px;white-space:normal;color:'+(cf?'#f9e2af':'#a6adc8');
            t.textContent=(cf?`⚠ 점검(${LOREQA_CHECK_KINDS[cf.kind]}): ${cf.reason}${cf.with?` — 관련: ${cf.with}`:''}`:'')+(cf&&st?' · ':'')+(st?`⏳ ${st}턴 동안 새 근거 없음 — 아직 맞는지 확인`:'');summary.appendChild(t);}}
-        {const tr=loreqa_ledgerTr.get(event.id);if(tr&&tr.src===loreqa_ledgerTrSrc(event)){const t=document.createElement('div');t.textContent='↳ '+tr.t;t.style.cssText='font-size:11px;color:#a6adc8;margin:2px 0 0 14px;white-space:normal';summary.appendChild(t);}}
+        {const tr=loreqa_ledgerTr.get(event.id)||ledger.tr?.[event.id];if(tr&&tr.src===loreqa_ledgerTrSrc(event)){const t=document.createElement('div');t.textContent='↳ '+tr.t;t.style.cssText='font-size:11px;color:#a6adc8;margin:2px 0 0 14px;white-space:normal';summary.appendChild(t);}}
         row.appendChild(summary);
         const fields={};
         const field=(key,label,multi)=>{
@@ -10706,6 +10723,7 @@ async function loreqa_registerHotkey() {
 
         await loreqa_registerHotkey();
 
+        loreqa_trLoad().catch(() => {});
         console.log('[LoreQA] 원작견 개조판 v' + LOREQA_VER + ' 로드 완료.');
     } catch (error) {
         console.error('[LoreQA] 초기화 실패:', error);
