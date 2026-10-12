@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.5.2
+//@version 3.5.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.5.2';
+const LOREQA_VER = '3.5.3';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5960,7 +5960,8 @@ async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType
     loreqa_state.lastError = '';
     const selectedProfile = overrideProfile || loreqa_getProfile();
     const profile = requestOptions.ledgerJson
-        ? {...selectedProfile, maxTokens: requestOptions.outputBudget || 8192, ...(['gemini','vertex'].includes(apiType) ? {reasoningLevel:'low'} : {})}
+        // 분기 출력 한도: 프로필에 더 크게 적어 두었으면 그쪽을 쓴다 (전에는 8192로 덮어써 추론 모델이 생각만 하다 본문 없이 끝났다)
+        ? {...selectedProfile, maxTokens: Math.max(requestOptions.outputBudget || 8192, Number(selectedProfile.maxTokens) || 0), ...(['gemini','vertex'].includes(apiType) ? {reasoningLevel:'low'} : {})}
         : selectedProfile;
     const apiModel = profile.apiModel;
     const maxTokens = profile.maxTokens;
@@ -6744,6 +6745,13 @@ async function loreqa_callLLMRaw(messages, enableSearch = false, overrideApiType
                 }
             }
 
+            // 본문 없이 출력 한도로 끝남 = 추론(생각)이 한도를 다 씀. 같은 요청을 되풀이해도 똑같으니 바로 돌려주고,
+            //   부른 쪽(분기 추출)이 한도를 늘리거나 묶음을 나누게 종료 사유를 넘긴다
+            const _limitFin = data?.choices?.[0]?.finish_reason || data?.candidates?.[0]?.finishReason || data?.stop_reason || data?.incomplete_details?.reason || '';
+            if (/^(MAX_TOKENS|length|max_tokens|max_output_tokens)$/i.test(_limitFin)) {
+                loreqa_state.lastError = `[${apiType}] 출력 한도(${maxTokens || '기본'} 토큰)를 다 썼는데 본문이 비었습니다 — 추론(생각)에 한도를 다 쓴 것으로 보입니다. API 설정의 최대 출력 토큰을 늘리거나 추론 수준을 낮춰 보세요.\n모델: ${apiModel}`;
+                return { text: '', usage: data.usage || data.usageMetadata || null, diagnostic: { apiType, model: apiModel, finish: _limitFin, incomplete: data?.incomplete_details?.reason || '', chars: 0, maxOutputTokens: maxTokens, reasoning: profile.reasoningLevel || 'default', emptyByLimit: true } };
+            }
             // content가 비어있으면 재시도 (코파일럿) 또는 null 반환
             //   응답 본문에서 종료 사유(finish_reason / stop_reason / promptFeedback) 를 추출해 사용자에게 전달
             const failureReason = loreqa_extractFailureReason(data, apiType);
@@ -9424,7 +9432,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         const capC=Number(loreqa_cfg.ledgerBatchChars)||0,capT=Math.max(1,Number(loreqa_cfg.ledgerBatchTurns)||2);let turns=0;
         while(end<messages.length){size+=messages[end].text.length;end++;if(['char','assistant'].includes(messages[end-1].role)){lastComplete=end;turns++;}if((capC>0&&size>=capC)||turns>=capT)break;}
         if(lastComplete===start){while(end<messages.length&&!['char','assistant'].includes(messages[end-1]?.role))end++;lastComplete=end;}
-        end=lastComplete;let outputBudget=8192,events;
+        end=lastComplete;let outputBudget=Math.max(8192,Number(loreqa_branchApi()[1]?.maxTokens)||0),events;
         while(true){
           const batch=messages.slice(Math.max(0,start-2),end);
           if(end>start&&batch.reduce((n,m)=>n+m.text.length,0)>100000){const smaller=scoutLedgerSplitEnd(messages,start,end);if(smaller!==null){end=smaller;continue;}}
@@ -9436,9 +9444,11 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
           try{events=await scoutLedgerExtractBatch(payload,batch,start,ledger,outputBudget);break;}
           catch(error){
             if(!['SCOUT_LEDGER_LIMIT','SCOUT_LEDGER_JSON'].includes(error.code))throw error;
+            // 추론이 한도를 다 쓴 경우: 묶음을 나눠도 생각은 줄지 않으므로 한도부터 두 배로 (32768까지)
+            if(error.reasoning&&outputBudget<32768){outputBudget*=2;scoutLedgerLogAdd(scope,{time:new Date().toISOString(),status:`추론이 한도를 다 씀: 출력 한도 ${outputBudget}로 확대`,from:start,to:end-1});continue;}
             const smaller=scoutLedgerSplitEnd(messages,start,end);
             if(smaller!==null){scoutLedgerLogAdd(scope,{time:new Date().toISOString(),status:'묶음 자동 분할',from:start,oldTo:end-1,to:smaller-1,error:String(error.message||error)});end=smaller;continue;}
-            if(error.code==='SCOUT_LEDGER_LIMIT'&&outputBudget===8192){outputBudget=16384;scoutLedgerLogAdd(scope,{time:new Date().toISOString(),status:'최소 묶음 출력 한도 16384로 한 번 확대',from:start,to:end-1});continue;}
+            if(error.code==='SCOUT_LEDGER_LIMIT'&&outputBudget<16384){outputBudget=16384;scoutLedgerLogAdd(scope,{time:new Date().toISOString(),status:'최소 묶음 출력 한도 16384로 한 번 확대',from:start,to:end-1});continue;}
             throw Error('최소 대화 묶음도 완료하지 못했습니다. 미완료 위치를 유지했습니다. '+String(error.message||error));
           }
         }
@@ -10724,6 +10734,11 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
         // 무엇이 함께 들어갔는지: 페르소나·작가의 노트 글자 수와 첨부 글자 수 상한에서 잘렸을 가능성
         { const cap=loreqa_lim('attachChars'), pl=String(payload.player_persona||'').length, al=String(payload.author_note||'').length; entry.attached={persona:pl,authorNote:al,cap:cap||null,mayBeCut:!!cap&&(pl>=cap||al>=cap),...(Number(loreqa_cfg.branchPersona)===1&&!pl?{personaMissing:loreqa_personaLast.reason}:{})}; }
         scoutLedgerLogAdd(payload.scope, entry);
+        if (response?.diagnostic?.emptyByLimit) {
+            if (kept) return kept;
+            entry.status='출력 한도 초과 (본문 없음: 추론이 한도를 다 씀)'; entry.error=scoutLedgerLogText(loreqa_state.lastError);
+            const error=Error('추론이 출력 한도를 다 써 본문이 비었습니다.');error.code='SCOUT_LEDGER_LIMIT';error.reasoning=true;throw error;
+        }
         if (!response?.text) {
             entry.status='API 요청 실패'; entry.error=scoutLedgerLogText(loreqa_state.lastError || '빈 응답');
             // 일시적인 빈 응답·과부하는 같은 묶음으로 한 번 더 요청한다.
