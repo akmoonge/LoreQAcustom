@@ -174,7 +174,7 @@ comments are Korean.
   `guide`, `guideCount` events marked [as canon]/[changed]/[impossible], bucket.guide, regenerated when the ledger count
   changes, skipped on a time-jump turn), injected whole with lead `guideSteer` (follow/canon) or `guideRef`. Only change:
   written in the story language and fed `loreqa_divFor('world')`. `flowSceneGate` (beats mode, default 0 since 3.3.15):
-  0 = all beats with at/present conditions + all secrets + whole PUBLIC, main model decides; 1 = scene judge picks
+  0 = all beats with at/present conditions + all secrets + PUBLIC minus the judge's ONSCREEN lines (3.4.11: before, gate 0 ignored ONSCREEN and an on-screen group went in as off-screen), main model decides; 1 = scene judge picks
   (READY / SECRETS / ONSCREEN). A harness A/B (testdata/harness/gen.js) showed no pull-in either way.
 - 실험 미리보기 (`loreqa_renderAltPreview`, 3.4.9): the position card builds the other style (beats ↔ list) for the same
   position + ledger and shows it next to the current one; memory only (`loreqa_altPreview`), never saved or injected.

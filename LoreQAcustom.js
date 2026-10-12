@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.10
+//@version 3.4.11
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.10';
+const LOREQA_VER = '3.4.11';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7519,12 +7519,14 @@ The last event of the original that has already happened at this point, and the 
 - One line per major ORIGINAL character or faction active now: where they are and what they are doing or heading toward, as of the cut. Present tense; no backstory, motives or mechanics; nothing after the cut; nothing [NOW] or a beat already says.
 - Never say where the story's own characters are or whom they travel with, and never list them as members of a group: that changes scene by scene and is judged from the story itself. Mention them only where confirmed_changes give an original character or faction a lasting new state (a death, a defection, a new ruler).
 - Write only what anyone around them could see or has heard. Never state or hint at a fact that some characters do not know (a hidden identity, a transformation or illness, a secret plan, who someone really is, who sent whom): such facts belong in [HIDDEN] only.
+- Every line must agree with confirmed_changes. When they say a task is finished, an item handed over or a relationship changed, write the state after it, or leave the character out; never the original's state that they replaced.
 
 5. [HIDDEN]: secrets that could slip (at most 8; none is fine, never fill with weak lines)
 - A concrete fact true at the cut that some characters do not know and could let slip, reveal or act on by mistake, with who does not know and who knows. A plan already in motion that its targets do not know (who has been sent against them, a trap already laid) counts even if [NOW] mentions it.
 - Not secrets: anything placed after the cut (check when the original makes it true: memories regained, sides changed and truths learned later on are not lines here), news someone has not heard yet (a fight won, a technique learned, a place reached), unknown places, vague items ("does not know the whole story of X"), motives, mechanics, weaknesses, future plans.
 - "known to" lists only characters the original shows learning it by the cut, or that confirmed_changes say know it. Never guess who might have found out; drop a name you are not sure of, and the line if no one is sure.
-- Secrets created by the story count only if confirmed_changes state them; never invent new ones.
+- Secrets created by the story count only if confirmed_changes state them; never invent new ones. A record of what someone did or has is not a secret: it needs a record that someone does not know it.
+- Before writing a line, check confirmed_changes: if they say a character in "does not know" already knows it, remove that character, and the line if no one is left.
 - confirmed_changes may say that the story's own character knows a secret. It is still a secret for everyone else: keep the line and add that character to "known to".` } },
     sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
         locked: '입력: 번호 붙은 세계 상태 · 숨은 상태 · 원작 비트, 최근 이야기, 이번 유저 입력. 답은 PLACE / PRESENT / SECRETS / READY / NEAR / DONE 여섯 줄 (그대로 읽어서 나눔). 뒤에 ONSCREEN 줄(지금 장면에 들어와 있는 세계 상태 줄 번호) 요청이 자동으로 붙음',
@@ -8195,7 +8197,8 @@ async function loreqa_prepareTurn() {
             //   원작 따라가기는 조건이 거의 맞는 비트와 분기로 깨진 비트도 넣는다. 시간 점프 턴에도 빼지 않고 '점프 전 기준' 안내만 붙인다
             const stance = loreqa_stance(), live = x => !playedNow.includes(x);
             // 지금 장면에 들어와 있는 원작 인물·세력의 줄은 뺀다: 원작 기준 위치가 이야기와 어긋난다 (장면 판단의 ONSCREEN)
-            const onscreen = Number(cfg.flowSceneGate ?? 1) !== 0 && Array.isArray(sc.onscreen) ? sc.onscreen : [];
+            //   거르기를 꺼도 뺀다: 장면에 나와 있는 인물을 '화면 밖'에서 원작대로 움직이게 하면 이야기와 부딪힌다
+            const onscreen = Array.isArray(sc.onscreen) ? sc.onscreen : [];
             t.guide = (W?.pub || []).filter(l => !onscreen.includes(l)).map(l => '- ' + l).join('\n');
             // 원작 결말(then:)은 원작 따라가기 · 원작 우선에서만 넣는다. 균형 이하에서 결말을 알려 주면 그쪽으로 끌려간다
             const withThen = stance === 'follow' || stance === 'canon';
