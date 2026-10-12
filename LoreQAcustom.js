@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.0
-//@version 3.9.0
+//@display-name 원작견 개조판 v3.9.1
+//@version 3.9.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.0';
+const LOREQA_VER = '3.9.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -695,7 +695,7 @@ function loreqa_buildQuickEnv() {
 //   표는 대부분 추측이다. 시험으로 정한 것: 원작 따라가기만 원작 쪽으로 끄는 효과가 측정됨, 위치 판정 3턴이면 충분, 분기 묶음 1-3턴 비슷(4턴은 잘못된 기록 증가).
 //   추측인 것: 인지도별 모드 조합(LOREQA_FAME), 비용 단계의 배율, 응답 길이에서 입력 길이 가정(응답의 1/4, 최소 150).
 const LOREQA_SURVEY = [
-    { key: 'fame', q: '얼마나 유명한 작품인가요?', opts: ['누구나 아는 대작 (해리 포터, 원피스급)', '장르 팬이면 다 아는 작품', '팬층은 있지만 아는 사람만 아는 작품', '마이너 (위키 정보가 적음)', '아주 마이너 (한국어·영어 자료가 거의 없음)'] },
+    { key: 'fame', q: '얼마나 유명한 작품인가요?', opts: ['누구나 아는 대작 (원피스급)', '장르 팬이면 다 아는 작품', '팬층은 있지만 아는 사람만 아는 작품', '마이너 (위키 정보가 적음)', '아주 마이너 (한국어·영어 자료가 거의 없음)'] },
     { key: 'stance', q: '원작 흐름을 얼마나 따라갈 건가요?', opts: ['원작 사건을 거의 그대로 겪고 싶다', '큰 줄기는 원작대로, 세부는 바뀌어도 됨', '원작을 참고하되 반반', '원작에서 벗어나는 걸 즐김', '원작은 배경일 뿐, 내 이야기가 중심'] },
     { key: 'pc', q: '주인공은 누구인가요?', opts: ['원작에 없는 오리지널 캐릭터', '원작 인물의 가족·친척 같은 연결된 오리지널 캐릭터', '원작 인물로 빙의·환생', '원작 인물 그대로', '여러 캐릭터를 번갈아 가며'] },
     { key: 'time', q: '이야기의 시간대는?', opts: ['원작 시간대 안에서 처음부터 같이 진행', '원작 중간부터 합류', '원작 이전 (과거 시대)', '원작 이후 (엔딩 뒤)', '설정만 빌린 AU (현대 AU, 학원 AU 등)'] },
@@ -739,78 +739,126 @@ function loreqa_surveyValues(plan) {
     v.ledgerTidyEvery = Math.max(8, Math.min(60, Math.round(v.ledgerTidyEvery * plan.cost.tidyX)));
     return { calc, values: v };
 }
+// 바뀌는 설정 목록 (지금 → 추천)
+function loreqa_surveyDiff(plan, vals) {
+    const cur = k => loreqa_cfg[k] ?? LOREQA_DEFAULTS[k], lines = [];
+    for (const [k, v] of Object.entries(plan.base)) { if (k === 'fameTier') continue; const f = x => LOREQA_FAME_LABELS[k] ? loreqa_fameValue(k, x) : String(x ?? ''), from = f(cur(k)), to = f(v); if (from !== to && String(cur(k)) !== String(v)) lines.push(`${LOREQA_FAME_LABELS[k] || LOREQA_SURVEY_LABELS[k] || k}: ${from} → ${to}`); }
+    const mcNow = loreqa_ensureModeCfg();
+    for (const [m, label] of [['char', '인물'], ['set', '세계관']]) for (const [k, v] of Object.entries(plan.mc[m])) if (String(mcNow[m][k]) !== String(v)) lines.push(`${label} ${LOREQA_SURVEY_LABELS[k] || k}: ${mcNow[m][k] ? '켬' : '끔'} → ${v ? '켬' : '끔'}`);
+    for (const [k, v] of Object.entries(vals.values)) if (String(loreqa_envCurrent(k)) !== String(v)) lines.push(`${LOREQA_ENV_LABELS[k] || k}: ${loreqa_envCurrent(k)} → ${v}`);
+    return lines;
+}
+async function loreqa_surveySave(name, source, plan, vals) {
+    const mc = loreqa_ensureModeCfg();
+    loreqa_cfg.source = source;
+    Object.assign(loreqa_cfg, plan.base);
+    for (const m of ['char', 'set']) Object.assign(mc[m], plan.mc[m]);
+    Object.assign(loreqa_cfg, { envCtx: plan.env.ctx, envPrompt: 0, envOut: plan.env.out, envIn: plan.env.inp, envLang: plan.env.lang });
+    loreqa_applyModes();
+    await loreqa_envApply(vals.values);
+    const data = loreqa_collectPresetData(), ex = loreqa_presets.find(p => p.name === name);
+    let id;
+    if (ex) { ex.data = data; ex.createdAt = new Date().toLocaleString(); id = ex.id; }
+    else { const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, createdAt: new Date().toLocaleString(), data }; loreqa_presets.push(p); id = p.id; }
+    await loreqa_savePresets();
+    loreqa_cfg.activePresetId = id;
+    loreqa_cache = null; loreqa_modeCaches = {}; scoutCache = null;
+    await loreqa_saveConfig();
+    loreqa_stat('survey.apply');
+}
+// 원클릭 세팅 탭에는 시작 카드만. 질문은 팝업에서 한 장씩
 function loreqa_buildQuickSurvey() {
     const sec = loreqa_section('질문으로 설정 만들기');
-    sec.appendChild(loreqa_el('div', 'loreqa-muted', '작품명과 7가지 질문에 답하면 추천 설정을 만들어 프리셋으로 저장하고 바로 적용합니다. API 키·모델·지침·프롬프트는 건드리지 않습니다.'));
-    const srcIn = loreqa_el('input', 'loreqa-input'); srcIn.type = 'text'; srcIn.value = loreqa_cfg.source || ''; srcIn.placeholder = '예: 犬夜叉 / Harry Potter';
-    sec.appendChild(loreqa_createRow('작품명', srcIn, '기본·프리셋 탭의 작품명에 들어갑니다. 원작 표기(원어)가 검색에 가장 잘 맞습니다'));
-    const ans = {};
-    for (const [qi, Q] of LOREQA_SURVEY.entries()) {
-        const box = loreqa_el('div'); box.style.cssText = 'margin-top:10px';
-        box.appendChild(loreqa_el('div', '', `Q${qi + 1}. ${Q.q}`)); box.firstChild.style.cssText = 'font-weight:600;color:#cdd6f4;margin-bottom:4px';
-        Q.opts.forEach((o, i) => {
-            const lab = document.createElement('label'); lab.style.cssText = 'display:flex;gap:6px;align-items:center;font-size:12px;color:#cdd6f4;margin:2px 0;cursor:pointer';
-            const r = document.createElement('input'); r.type = 'radio'; r.name = 'loreqa-survey-' + Q.key; r.value = String(i + 1);
-            r.addEventListener('change', () => { ans[Q.key] = i + 1; reset(); });
-            lab.append(r, document.createTextNode(`${i + 1}. ${o}`)); box.appendChild(lab);
-        });
-        if (Q.key === 'out') {
-            const lsel = loreqa_createSelect('loreqa-survey-lang', LOREQA_ENV_LANGS, loreqa_cfg.envLang || 'en', () => reset());
-            box.appendChild(loreqa_createRow('대화 언어', lsel, '토큰을 글자 수로 바꾸는 데 씀')); ans.__lang = lsel;
-        }
-        sec.appendChild(box);
-    }
-    const nameIn = loreqa_el('input', 'loreqa-input'); nameIn.type = 'text'; nameIn.placeholder = '예: 이누야샤 小夜';
-    const nameRow = loreqa_createRow('저장할 프리셋 이름', nameIn, '같은 이름이 있으면 덮어씁니다'); nameRow.style.marginTop = '10px'; sec.appendChild(nameRow);
-    const result = loreqa_el('div', 'loreqa-muted'); result.style.cssText = 'margin-top:8px;white-space:pre-wrap;line-height:1.6';
-    let plan = null, vals = null;
-    const save = loreqa_btn('프리셋으로 저장하고 적용', async () => {
-        if (!plan) return;
-        const name = nameIn.value.trim() || srcIn.value.trim();
-        if (!name) { result.textContent = '프리셋 이름을 입력해 주세요.'; return; }
-        const mc = loreqa_ensureModeCfg();
-        loreqa_cfg.source = srcIn.value.trim();
-        Object.assign(loreqa_cfg, plan.base);
-        for (const m of ['char', 'set']) Object.assign(mc[m], plan.mc[m]);
-        Object.assign(loreqa_cfg, { envCtx: plan.env.ctx, envPrompt: 0, envOut: plan.env.out, envIn: plan.env.inp, envLang: plan.env.lang });
-        loreqa_applyModes();
-        await loreqa_envApply(vals.values);
-        const data = loreqa_collectPresetData(), ex = loreqa_presets.find(p => p.name === name);
-        let id;
-        if (ex) { ex.data = data; ex.createdAt = new Date().toLocaleString(); id = ex.id; }
-        else { const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, createdAt: new Date().toLocaleString(), data }; loreqa_presets.push(p); id = p.id; }
-        await loreqa_savePresets();
-        loreqa_cfg.activePresetId = id;
-        loreqa_cache = null; loreqa_modeCaches = {}; scoutCache = null;
-        await loreqa_saveConfig();
-        loreqa_stat('survey.apply');
-        alert(`프리셋 "${name}"으로 저장하고 적용했습니다.\n\n${LOREQA_SURVEY_NOTE}`);
-        loreqa_cfg.uiTab = 'quick'; await loreqa_openSettingsWindow();
-    });
-    save.disabled = true;
-    const reset = () => { plan = null; vals = null; save.disabled = true; };
-    srcIn.addEventListener('input', reset);
-    const show = loreqa_btn('추천값 보기', () => {
-        const miss = LOREQA_SURVEY.filter(Q => !ans[Q.key]).map((Q, i) => 'Q' + (LOREQA_SURVEY.indexOf(Q) + 1));
-        if (!srcIn.value.trim()) { result.textContent = '작품명을 입력해 주세요.'; return; }
-        if (miss.length) { result.textContent = '아직 고르지 않은 질문: ' + miss.join(', '); return; }
-        try {
-            plan = loreqa_surveyPlan(ans, ans.__lang.value); vals = loreqa_surveyValues(plan);
-            const cur = k => loreqa_cfg[k] ?? LOREQA_DEFAULTS[k];
-            const lines = [];
-            for (const [k, v] of Object.entries(plan.base)) if (k !== 'fameTier' && String(cur(k)) !== String(v)) lines.push(`· ${LOREQA_FAME_LABELS[k] || LOREQA_SURVEY_LABELS[k] || k}: ${LOREQA_FAME_LABELS[k] ? loreqa_fameValue(k, cur(k)) : cur(k)} → ${LOREQA_FAME_LABELS[k] ? loreqa_fameValue(k, v) : v}`);
-            const mcNow = loreqa_ensureModeCfg();
-            for (const [m, label] of [['char', '인물'], ['set', '세계관']]) for (const [k, v] of Object.entries(plan.mc[m])) if (String(mcNow[m][k]) !== String(v)) lines.push(`· ${label} ${LOREQA_SURVEY_LABELS[k] || k}: ${mcNow[m][k] ? '켬' : '끔'} → ${v ? '켬' : '끔'}`);
-            for (const [k, v] of Object.entries(vals.values)) if (String(loreqa_envCurrent(k)) !== String(v)) lines.push(`· ${LOREQA_ENV_LABELS[k] || k}: ${loreqa_envCurrent(k)} → ${v}`);
-            result.textContent = `작품 인지도: ${LOREQA_FAME[plan.base.fameTier].label} · 원작 흐름: ${(LOREQA_STANCES.find(x => x[0] === plan.base.canonStance) || [])[1]}\n`
-                + `메인 모델이 기억하는 최근 대화: 약 ${vals.calc.remember}턴 (고정 프롬프트를 컨텍스트의 40%로 가정)\n\n바뀌는 설정:\n${lines.join('\n') || '(없음)'}`
-                + (plan.notes.length ? '\n\n참고:\n' + plan.notes.map(x => '· ' + x).join('\n') : '') + `\n\n${LOREQA_SURVEY_NOTE}`;
-            save.disabled = false;
-        } catch (e) { reset(); result.textContent = String(e.message || e); }
-    });
-    const btns = loreqa_el('div', 'loreqa-lore-buttons'); btns.style.marginTop = '8px'; btns.append(show, save);
-    sec.append(btns, result);
+    sec.appendChild(loreqa_el('div', 'loreqa-muted', '작품명과 질문 8개에 답하면 추천 설정을 만들어 프리셋으로 저장하고 바로 적용합니다. API 키 · 모델 · 지침 · 프롬프트는 건드리지 않습니다.'));
+    const b = loreqa_btn('질문 시작', () => loreqa_openSurvey()); b.style.marginTop = '8px';
+    sec.appendChild(b);
     return sec;
+}
+const LOREQA_SURVEY_CSS = `
+#loreqa-survey-panel { background:#1e1e2e; border:1px solid #313244; border-radius:14px; width:560px; max-width:92vw; max-height:86vh; display:flex; flex-direction:column; overflow:hidden; }
+#loreqa-survey-panel .sv-head { padding:14px 18px 10px; border-bottom:1px solid #313244; }
+#loreqa-survey-panel .sv-top { display:flex; justify-content:space-between; align-items:center; color:#a6adc8; font-size:12px; }
+#loreqa-survey-panel .sv-bar { height:4px; background:#313244; border-radius:2px; margin-top:8px; overflow:hidden; }
+#loreqa-survey-panel .sv-bar > div { height:100%; background:#89b4fa; transition:width .2s; }
+#loreqa-survey-panel .sv-body { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:10px; }
+#loreqa-survey-panel .sv-q { font-size:16px; font-weight:700; color:#cdd6f4; margin-bottom:4px; line-height:1.4; }
+#loreqa-survey-panel .sv-sub { font-size:12px; color:#a6adc8; }
+#loreqa-survey-panel .sv-opt { display:flex; gap:10px; align-items:center; text-align:left; width:100%; padding:11px 14px; border-radius:10px; border:1px solid #313244; background:#181825; color:#cdd6f4; font-size:13px; cursor:pointer; transition:border-color .12s, background .12s; }
+#loreqa-survey-panel .sv-opt:hover { border-color:#585b70; background:#1f1f30; }
+#loreqa-survey-panel .sv-opt.on { border-color:#89b4fa; background:#24273a; }
+#loreqa-survey-panel .sv-num { flex:0 0 22px; height:22px; border-radius:50%; border:1px solid #45475a; display:flex; align-items:center; justify-content:center; font-size:11px; color:#a6adc8; }
+#loreqa-survey-panel .sv-opt.on .sv-num { background:#89b4fa; border-color:#89b4fa; color:#11111b; font-weight:700; }
+#loreqa-survey-panel .sv-in { width:100%; box-sizing:border-box; padding:10px 12px; border-radius:10px; border:1px solid #45475a; background:#11111b; color:#cdd6f4; font-size:14px; }
+#loreqa-survey-panel .sv-in:focus { outline:none; border-color:#89b4fa; }
+#loreqa-survey-panel .sv-sum { white-space:pre-wrap; font-size:12px; line-height:1.6; color:#cdd6f4; background:#181825; border:1px solid #313244; border-radius:10px; padding:10px 12px; }
+#loreqa-survey-panel .sv-note { font-size:12px; line-height:1.6; color:#f9e2af; }
+#loreqa-survey-panel .sv-foot { display:flex; justify-content:space-between; gap:8px; padding:12px 18px; border-top:1px solid #313244; }
+#loreqa-survey-panel .sv-foot button { min-width:90px; }
+`;
+function loreqa_openSurvey() {
+    if (!document.getElementById('loreqa-survey-css')) { const st = document.createElement('style'); st.id = 'loreqa-survey-css'; st.textContent = LOREQA_SURVEY_CSS; document.head.appendChild(st); }
+    document.getElementById('loreqa-advanced-overlay')?.remove();
+    const overlay = loreqa_el('div'); overlay.id = 'loreqa-advanced-overlay';
+    const panel = loreqa_el('div'); panel.id = 'loreqa-survey-panel';
+    overlay.appendChild(panel); document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    // 단계: 작품명 → 질문 7개 → 대화 언어 → 확인·저장
+    const steps = [{ key: 'source' }, ...LOREQA_SURVEY.map(Q => ({ key: Q.key, Q })), { key: 'lang', Q: { q: '이야기(대화)는 주로 어떤 언어인가요?', sub: '토큰을 글자 수로 바꾸는 데 씁니다', opts: LOREQA_ENV_LANGS.map(x => x.label), vals: LOREQA_ENV_LANGS.map(x => x.value) } }, { key: 'done' }];
+    const ans = { source: loreqa_cfg.source || '', lang: loreqa_cfg.envLang || '' };
+    let at = 0, plan = null, vals = null;
+    const render = () => {
+        const S = steps[at], total = steps.length - 1;
+        panel.innerHTML = '';
+        const head = loreqa_el('div', 'sv-head'), top = loreqa_el('div', 'sv-top');
+        const x = loreqa_el('button'); x.id = 'loreqa-close-btn'; x.innerHTML = '&times;'; x.addEventListener('click', close);
+        top.append(loreqa_el('span', '', S.key === 'done' ? '확인' : `${at + 1} / ${total}`), x);
+        const bar = loreqa_el('div', 'sv-bar'), fill = loreqa_el('div'); fill.style.width = Math.round(Math.min(at, total) / total * 100) + '%'; bar.appendChild(fill);
+        head.append(top, bar);
+        const body = loreqa_el('div', 'sv-body'), foot = loreqa_el('div', 'sv-foot');
+        const back = loreqa_btn('이전', () => { at--; render(); }); back.disabled = at === 0;
+        let next = null;
+        const go = () => { at++; render(); };
+        if (S.key === 'source') {
+            body.append(loreqa_el('div', 'sv-q', '어떤 작품인가요?'), loreqa_el('div', 'sv-sub', '기본·프리셋 탭의 작품명에 들어갑니다. 원어 표기가 검색에 가장 잘 맞습니다.'));
+            const inp = loreqa_el('input', 'sv-in'); inp.type = 'text'; inp.placeholder = '원작 작품명'; inp.value = ans.source;
+            inp.addEventListener('input', () => { ans.source = inp.value; next.disabled = !inp.value.trim(); });
+            inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.value.trim()) go(); });
+            body.appendChild(inp); setTimeout(() => inp.focus(), 0);
+            next = loreqa_btn('다음', go); next.disabled = !ans.source.trim();
+        } else if (S.key === 'done') {
+            plan = loreqa_surveyPlan(ans, ans.lang); vals = loreqa_surveyValues(plan);
+            const lines = loreqa_surveyDiff(plan, vals);
+            body.append(loreqa_el('div', 'sv-q', '추천 설정'),
+                loreqa_el('div', 'sv-sub', `${ans.source} · 인지도 ${LOREQA_FAME[plan.base.fameTier].label} · 원작 흐름 ${(LOREQA_STANCES.find(y => y[0] === plan.base.canonStance) || [])[1]} · 기억하는 최근 대화 약 ${vals.calc.remember}턴`));
+            body.appendChild(loreqa_el('div', 'sv-sum', lines.length ? lines.map(l => '· ' + l).join('\n') : '지금 설정과 같습니다.'));
+            if (plan.notes.length) body.appendChild(loreqa_el('div', 'sv-sub', plan.notes.map(n => '· ' + n).join('\n'))), body.lastChild.style.whiteSpace = 'pre-wrap';
+            const nm = loreqa_el('input', 'sv-in'); nm.type = 'text'; nm.placeholder = '저장할 프리셋 이름'; nm.value = ans.preset || ans.source;
+            nm.addEventListener('input', () => { ans.preset = nm.value; next.disabled = !nm.value.trim(); });
+            body.append(loreqa_el('div', 'sv-sub', '저장할 프리셋 이름 (같은 이름이 있으면 덮어씀)'), nm, loreqa_el('div', 'sv-note', LOREQA_SURVEY_NOTE));
+            next = loreqa_btn('프리셋으로 저장하고 적용', async () => {
+                next.disabled = true;
+                try { await loreqa_surveySave(nm.value.trim(), ans.source.trim(), plan, vals); close(); loreqa_cfg.uiTab = 'quick'; await loreqa_openSettingsWindow(); }
+                catch (e) { next.disabled = false; alert('저장 실패: ' + (e?.message || e)); }
+            });
+            next.disabled = !nm.value.trim();
+        } else {
+            const Q = S.Q;
+            body.appendChild(loreqa_el('div', 'sv-q', Q.q));
+            if (Q.sub) body.appendChild(loreqa_el('div', 'sv-sub', Q.sub));
+            Q.opts.forEach((o, i) => {
+                const v = Q.vals ? Q.vals[i] : i + 1;
+                const b = document.createElement('button'); b.type = 'button'; b.className = 'sv-opt' + (ans[S.key] === v ? ' on' : '');
+                b.append(loreqa_el('span', 'sv-num', String(i + 1)), loreqa_el('span', '', o));
+                b.addEventListener('click', () => { ans[S.key] = v; render(); setTimeout(go, 160); });
+                body.appendChild(b);
+            });
+            next = loreqa_btn('다음', go); next.disabled = ans[S.key] == null || ans[S.key] === '';
+        }
+        foot.append(back, next);
+        panel.append(head, body, foot);
+    };
+    render();
 }
 const LOREQA_SURVEY_LABELS = { branchOriginal: '분기: 오리지널 캐릭터 규칙', flowOriginal: '전개: 오리지널 캐릭터 규칙', branchPersona: '분기: 페르소나 첨부', flowPersona: '전개·브리핑: 페르소나 첨부', posModelEvery: '위치 판정 간격 (응답 수)', branchPdf: '분기 PDF 전송', flowPdf: '전개 PDF 전송', original: '오리지널 캐릭터 규칙', search: '웹 검색' };
 // 원클릭 세팅 탭: 작품 인지도 단계 카드. 누르면 바뀔 항목을 보여 주고 확인 뒤 적용 (켜고 끄는 값만)
@@ -8477,7 +8525,7 @@ Unit to use: ${med.rule}
 Several chapters or episodes can share one date; a date right after a multi-part event belongs to the part that covers that following day.
 Line 1: a short label in that unit followed by " - " and the chapter/episode title exactly as found in the sources (use the official ${lang} title if the sources give one), for example "${med.ex}". If this medium has no numbering, use the arc or story section name instead. Do not add any marks of uncertainty to this line.
 Line 2: "Index: " followed by the numbers of line 1 joined with dots, outermost first (for example "${med.idx}"), or "Index: -" if there are no numbers.
-PREQUEL / SEQUEL: if the story is set BEFORE the original's first chapter or episode (e.g. the parents' generation, years before the main story starts), Line 1 is a short description of that backstory period (e.g. "본편 이전 - 이누야샤 탄생 무렵" in the requested language) and Line 2 is exactly "Index: pre". Never map a prequel period onto a chapter merely because that backstory is told or shown there later (in a flashback or exposition): the chapter where a past is revealed is not the time it happened. Likewise use "Index: post" for a story set after the original's ending.
+PREQUEL / SEQUEL: if the story is set BEFORE the original's first chapter or episode (e.g. the parents' generation, years before the main story starts), Line 1 is a short description of that backstory period (e.g. "본편 이전 - [주인공] 탄생 무렵" in the requested language) and Line 2 is exactly "Index: pre". Never map a prequel period onto a chapter merely because that backstory is told or shown there later (in a flashback or exposition): the chapter where a past is revealed is not the time it happened. Likewise use "Index: post" for a story set after the original's ending.
 Line 3: "Confidence: high" or "Confidence: guess".
 Line 4: "Source: " followed by the site or page you relied on.
 No other text.`;
