@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.13
+//@version 3.5.0
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.13';
+const LOREQA_VER = '3.5.0';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3404,7 +3404,7 @@ function loreqa_buildTabs(p) {
     const [fl, fr] = split('flow', [], []);
     panes.flow.pane.classList.add('loreqa-pane-track');
     loreqa_buildFlowContent(fl, fr);
-    fr.appendChild(loreqa_promptSection(['pos', 'world', 'sceneJudge', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'stanceFollow', 'stanceCanon', 'stanceBalance', 'stanceChange', 'stanceFree', 'flowDoubt']));
+    fr.appendChild(loreqa_promptSection(['pos', 'world', 'worldCanon', 'worldChange', 'sceneJudge', 'jump', 'injPos', 'injGuard', 'injJump', 'injJumpBack', 'stanceFollow', 'stanceCanon', 'stanceBalance', 'stanceChange', 'stanceFree', 'flowDoubt']));
     // 기본 · 프리셋: 원작 Q&A 공통 설정 포함
     // 공통 칸(원작 Q&A 공통, 캐릭터 & 보정, 1차 질의)은 모드별 설정으로 옮겨 갔으니 화면에서 뺀다
     p.secLore.remove(); p.secChar.remove(); p.secFirst.remove();
@@ -7495,6 +7495,18 @@ Evidence, in order of trust:
 1. In-story dates and times (if given). Use them when the original's chronology for that period is documented. Many originals have vague, inconsistent or no dates: in that case do not force a match by date, and rely on 2 and 3.
 2. Story-progress markers in the chat: which original events are referred to as already past or still ahead, characters' ages or school years, terms, seasons, holidays, story arcs or locations that only exist in a certain period.
 3. Never match by topical similarity. A roleplay scene that resembles, or talks about, a later original scene does NOT move the timeline forward, and a divergent roleplay event does not map to the original event it resembles.` } },
+    worldCanon: { label: '세계 상태표 덧붙임 (원작 따라가기 · 원작 우선)', ph: [],
+        locked: '원작 흐름이 원작 따라가기 · 원작 우선일 때 세계 상태표 생성 지시 맨 뒤에 붙음. 비트에 "/ route:" 를 적게 함 (이 표식은 읽어서 나눔)',
+        def: { en: `STANCE: this story follows the original's main line. This adds to the rules above.
+- Keep [BEATS] strictly in the original's order; the first beat is the next milestone the story heads for.
+- Add to every beat, before "then", "/ route: <how its present people and its place come together from where this story stands now: who travels where, what news, request or pursuit draws them there>". Base the route on confirmed_changes and the original. Write "/ route: here" when they are already together.` } },
+    worldChange: { label: '세계 상태표 덧붙임 (개변 우선 · 개변 즐기기)', ph: [],
+        locked: '원작 흐름이 개변 우선 · 개변 즐기기일 때 세계 상태표 생성 지시 맨 뒤에 붙음. 원작 비트 대신 이 이야기에서 다가오는 일(바뀐 사건 · 파급)을 쓰게 함',
+        def: { en: `STANCE: this story branches away from the original. This overrides the [BEATS] rules above.
+- [BEATS] lists what comes next in THIS story's world, not the original's script, in the same line format.
+- For each upcoming original event, write how it would go here given confirmed_changes: the event part as it would now play out, "changed" how it differs from the original, "then" its likely outcome here. Keep "as canon" for events the changes do not touch.
+- When confirmed_changes give an original character or faction a reason to act (they learned something, lost or gained something, have a new ally or enemy), add a line starting with "(ripple)" instead of a chapter: what they would do next in response, with at / present / then like a beat. Every ripple must follow from a named confirmed_changes record; never invent a change.
+- Drop original events that the changes make pointless, or mark them broken.` } },
     world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'mediumRule', 'mediumName', 'count', 'beats', 'language'],
         locked: '뒤에 출력 형식([NOW] / [BEATS] / [PUBLIC] / [HIDDEN] 네 칸의 줄 모양과 표식)만 자동으로 붙음 (그대로 읽어서 나누므로 잠김). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
         def: { en: `You write the STATE OF THE ORIGINAL WORLD of "{{source}}" at this point of the original: "{{position}}". {{mediumRule}}
@@ -7595,20 +7607,20 @@ Answer with exactly two words: the time word (FORWARD, BACK or NONE) and the sce
         def: { ko: '이 이야기에서 원작과 달라진 확정 사실이다. 원작과 충돌하면 이쪽이 현재 사실이다. 직접 서술하거나 설명하지 말고 일관성을 지키는 데만 쓴다.',
                en: 'Confirmed facts in this story that differ from canon. Where they conflict with canon, these are the current truth. Do not narrate or explain them; use them only to stay consistent.' } },
     stanceFollow: { label: '원작 흐름 안내 (원작 따라가기)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태 · 지금 일어날 수 있는 원작 사건 · 조건이 거의 맞는 사건 · 분기로 깨진 사건이 붙음',
-        def: { ko: '이 이야기는 원작의 흐름을 따라간다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. "지금 일어날 수 있는 원작 사건"이 있으면 이야기를 그쪽으로 이끌고, "조건이 거의 맞는 사건"은 그 조건이 갖춰지도록 이야기를 기울인다. 분기로 깨진 사건은 바뀐 상황에 맞는 비슷한 사건으로 대신할 수 있다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지는 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: 'This story follows the original. The world state below keeps moving off-screen as in the original. If there are "original events that could happen now", steer the story toward them; for "events almost ready", lean the story so their conditions come together. An event broken by the changes may be replaced by a similar event that fits the new situation. Never move an original event into a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
+        def: { ko: '이 이야기는 원작의 흐름을 따라간다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. 이야기는 "다음 원작 이정표"를 향해 간다: 그 인물과 장소가 지금 장면에 없으면, 장면이 한숨 돌리는 대로 적힌 route 를 따라 그들이 모이도록 이야기를 움직인다(이동, 소식, 부탁, 추적, 누군가의 도착). 이정표가 일어나면 다음 사건이 새 이정표가 된다. 분기로 깨진 사건은 바뀐 상황에 맞는 비슷한 사건으로 대신할 수 있다. 원작 사건을 그 조건이 없는 장면에서 바로 시작하지는 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story follows the original. The world state below keeps moving off-screen as in the original. The story heads for the "next original milestone": if its people and place are not in the current scene, then as soon as the scene allows, move the story so they come together along its route (travel, news, a request, a pursuit, someone arriving). Once the milestone happens, the next event becomes the new milestone. An event broken by the changes may be replaced by a similar event that fits the new situation. Never start an original event in a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
     stanceCanon: { label: '원작 흐름 안내 (원작 우선)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
-        def: { ko: '이 이야기는 원작의 흐름을 우선한다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. "지금 일어날 수 있는 원작 사건"이 있으면 이야기를 그쪽으로 이끌되, 조건을 억지로 만들지는 않는다. 분기로 바뀐 것은 그것이 직접 닿는 곳에만 반영한다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: 'This story gives priority to the original. The world state below keeps moving off-screen as in the original. If there are "original events that could happen now", steer the story toward them, but do not force their conditions. Reflect the story\'s changes only where they directly reach. Never move an original event into a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
+        def: { ko: '이 이야기는 원작의 흐름을 우선한다. 아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이다. "다음 원작 이정표"와 조건이 맞는 원작 사건이 있으면 이야기를 그쪽으로 이끌되, 조건은 이야기에 자연스러운 계기가 생길 때 route 를 참고해 갖춘다. 분기로 바뀐 것은 그것이 직접 닿는 곳에만 반영한다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 유저 입력과 충돌하면 유저 입력이 우선이다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story gives priority to the original. The world state below keeps moving off-screen as in the original. Steer toward the "next original milestone" and events whose conditions hold; bring its conditions about along its route when the story offers a natural opening. Reflect the story\'s changes only where they directly reach. Never move an original event into a scene that lacks its conditions. The user\'s input takes priority when they conflict. Characters know only what they witnessed or were told.' } },
     stanceBalance: { label: '원작 흐름 안내 (균형)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
         def: { ko: '아래 세계 상태는 화면 밖에서 원작대로 굴러가는 배경이며, 이 이야기의 다음 장면이 아니다. "지금 일어날 수 있는 원작 사건"은 이야기 흐름에 자연스러울 때만 일어난다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말고, 분기로 바뀐 것은 자연스럽게 퍼지게 둔다. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
                en: 'The world state below keeps moving off-screen as in the original; it is not the next scene of this story. "Original events that could happen now" happen only where they fit the story naturally. Never move an original event into a scene that lacks its conditions, and let the story\'s changes spread naturally. Characters know only what they witnessed or were told.' } },
     stanceChange: { label: '원작 흐름 안내 (개변 우선)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
-        def: { ko: '이 이야기는 원작에서 바뀐 것을 우선한다. 아래 세계 상태는 화면 밖에서 굴러가는 배경이다. 분기에 얽힌 인물과 세력은 바뀐 상황에 맞춰 적극적으로 움직이고, 그 밖의 곳은 원작대로 흘러간다. "지금 일어날 수 있는 원작 사건"은 일어날 수 있지만, 이 이야기에서 바뀐 결과와 부딪히면 바뀐 쪽을 따른다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: 'This story gives priority to what it has changed. The world state below keeps moving off-screen. Characters and factions tied to the changes actively respond to the new situation; elsewhere the world runs as in the original. "Original events that could happen now" may happen, but where they clash with the story\'s changed outcomes, the change wins. Never move an original event into a scene that lacks its conditions. Characters know only what they witnessed or were told.' } },
+        def: { ko: '이 이야기는 원작에서 바뀐 것을 우선한다. 아래 세계 상태는 화면 밖에서 굴러가는 배경이다. "이 이야기에서 다가오는 일"은 원작 사건을 바뀐 상황에 맞춘 것과 바뀐 것의 파급(ripple)이다: 분기에 얽힌 원작 인물과 세력은 그대로 움직여 이야기에 닿게 하고(찾아오거나, 소식이 들리거나, 결과가 드러나게), 그 밖의 곳은 원작대로 흘러간다. 바뀐 결과와 원작이 부딪히면 바뀐 쪽을 따른다. 원작 사건을 그 조건이 없는 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story gives priority to what it has changed. The world state below keeps moving off-screen. "What comes next in this story\'s world" lists original events adapted to the changes and ripples of the changes: let the original characters and factions tied to the changes act on them and reach the story (they come looking, news arrives, consequences show); elsewhere the world runs as in the original. Where the original clashes with the story\'s changed outcomes, the change wins. Never move an original event into a scene that lacks its conditions. Characters know only what they witnessed or were told.' } },
     stanceFree: { label: '원작 흐름 안내 (개변 즐기기)', ph: [], locked: '맨 앞의 [Canon Guide] 표식은 잠김. 이 문구 뒤에 세계 상태와 지금 일어날 수 있는 원작 사건이 붙음',
-        def: { ko: '이 이야기는 원작에서 갈라져 나간다. 아래 세계 상태와 원작 사건은 "원래라면 이랬다"는 참고일 뿐이다. 세계 전체가 이 이야기에서 바뀐 것에 반응하며, 원작의 흐름보다 바뀐 것의 파급이 먼저다. 원작 사건을 이 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
-               en: 'This story branches away from the original. The world state and original events below are only a reference for "how it would have gone". The whole world responds to what this story has changed, and the ripples of those changes come before the original\'s flow. Never move an original event into this scene. Characters know only what they witnessed or were told.' } },
+        def: { ko: '이 이야기는 원작에서 갈라져 나간다. 원작의 줄거리는 더 이상 계획이 아니다. "이 이야기에서 다가오는 일"의 파급(ripple)을 따라 세계 전체가 이 이야기에서 바뀐 것에 반응하게 하고, 이야기 자신의 방향을 키운다. 원작 사건은 바뀐 세계에서도 말이 될 때만 일어난다. 원작 사건을 이 장면으로 옮겨 오지 말 것. 인물은 자기가 직접 겪거나 전해 들은 것만 안다.',
+               en: 'This story branches away from the original. The original\'s plot is no longer the plan. Let the whole world respond to what this story has changed, following the ripples in "what comes next in this story\'s world", and grow the story\'s own direction. Original events happen only if they still make sense in the changed world. Never move an original event into this scene. Characters know only what they witnessed or were told.' } },
     qaRef: { label: 'Q&A 블록 안내 (배경지식만)', ph: [], locked: '참고 지침이 "배경지식만"일 때 Q&A 블록 끝에 붙음',
         def: { ko: '※ 위 내용은 작성자의 배경지식으로만 활용할 것. 절대로 위 내용을 직접 서술하거나, 등장인물이 해당 정보를 설명하듯 말하게 하거나, 나레이션으로 독자에게 알려주는 식으로 쓰지 말 것. 서사의 흐름상 자연스럽게 녹아들 수 있는 부분만 간접적으로 반영하고, 부자연스럽거나 불필요하면 아예 사용하지 말 것.',
                en: "※ Use the above only as the author's background knowledge. Never narrate it directly, have characters explain it as exposition, or tell it to the reader through narration. Reflect only what blends naturally into the flow of the story, indirectly; if it would be unnatural or unnecessary, do not use it at all." } },
@@ -7914,6 +7926,8 @@ const LOREQA_STANCES = [
     ['follow', '원작 따라가기', 'stanceFollow'], ['canon', '원작 우선', 'stanceCanon'], ['balance', '균형', 'stanceBalance'],
     ['change', '개변 우선', 'stanceChange'], ['free', '개변 즐기기', 'stanceFree'],
 ];
+// 원작 흐름 묶음: 세계 상태표 생성 내용이 묶음마다 다르다 (원작 쪽 = 경로가 붙은 순서 비트, 개변 쪽 = 바뀐 사건 · 파급)
+const loreqa_stanceGroup = () => ({ follow: 'canon', canon: 'canon', change: 'change', free: 'change' })[loreqa_stance()] || 'balance';
 const loreqa_stance = () => LOREQA_STANCES.some(([k]) => k === loreqa_cfg.canonStance) ? loreqa_cfg.canonStance : 'balance';
 function loreqa_parseWorld(raw) {
     const text = String(raw || '').replace(/\r/g, '');
@@ -7926,12 +7940,12 @@ function loreqa_parseWorld(raw) {
     tags.forEach(([k, i, len], n) => { const start = i + len, end = n + 1 < tags.length ? tags[n + 1][1] : text.length; out[k] = lines(text.slice(start, end)); });
     // 비트: "<사건> / needs: <조건>" + 끝의 "(broken: <이유>)"
     // 비트: "<사건> / at: <장소> / present: <함께 있어야 할 인물> / then: <원작 결말>" (+ "(broken: <이유>)"). 예전 "/ needs:" 도 읽는다
-    const field = (l, name) => { const m = l.match(new RegExp('/\\s*' + name + '\\s*[:：]\\s*(.*?)(?=\\s*/\\s*(?:at|present|changed|then|needs)\\s*[:：]|\\s*\\(broken\\b|$)', 'i')); return m ? m[1].trim() : ''; };
+    const field = (l, name) => { const m = l.match(new RegExp('/\\s*' + name + '\\s*[:：]\\s*(.*?)(?=\\s*/\\s*(?:at|present|changed|route|then|needs)\\s*[:：]|\\s*\\(broken\\b|$)', 'i')); return m ? m[1].trim() : ''; };
     out.beats = out.beats.filter(l => !/^(none|なし|없음|无|無)\.?$/i.test(l.trim())).map(l => {
         const broken = /\(broken\b[^)]*\)\s*$/i.test(l);
-        const event = l.split(/\s*\/\s*(?:at|present|changed|then|needs)\s*[:：]/i)[0].replace(/\(broken\b[^)]*\)\s*$/i, '').trim();
-        const at = field(l, 'at'), present = field(l, 'present'), changed = field(l, 'changed'), then = field(l, 'then'), needs = field(l, 'needs');
-        return { text: l, event, at, present, changed, then, needs: needs || [at && 'at ' + at, present && 'present: ' + present].filter(Boolean).join('; '), broken };
+        const event = l.split(/\s*\/\s*(?:at|present|changed|route|then|needs)\s*[:：]/i)[0].replace(/\(broken\b[^)]*\)\s*$/i, '').trim();
+        const at = field(l, 'at'), present = field(l, 'present'), changed = field(l, 'changed'), route = field(l, 'route'), then = field(l, 'then'), needs = field(l, 'needs');
+        return { text: l, event, at, present, changed, route, then, ripple: /^\(ripple\)/i.test(l), needs: needs || [at && 'at ' + at, present && 'present: ' + present].filter(Boolean).join('; '), broken };
     });
     out.now = out.now.join(' ');
     return out;
@@ -7990,7 +8004,8 @@ async function loreqa_generateWorld(label, divergences, played = []) {
     const lang = loreqa_storyLang || scoutLang(), n = Math.max(1, Math.min(20, Number(loreqa_cfg.worldCount) || 8)), nb = Math.max(1, Math.min(12, Number(loreqa_cfg.beatCount) || 5)), med = loreqa_mediumRule();
     const mediumName = { novel: 'the original novels', manga: 'the original manga', webnovel: 'the original web novel', anime: 'the anime TV series', drama: 'the live-action series', game: 'the game' }[loreqa_cfg.canonMedium] || 'the medium that current_point is counted in (volume / chapter numbers mean the manga or novels, not the anime)';
     const vars = { source: loreqa_cfg.source, position: label, count: n, beats: nb, mediumRule: med.rule, mediumName, language: lang };
-    const system = loreqa_prompt('world', vars, false) + '\n\n' + LOREQA_WORLD_FORMAT.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vars ? String(vars[k]) : m) + await loreqa_flowOcRule();
+    const sg = loreqa_stanceGroup(), add = { canon: 'worldCanon', change: 'worldChange' }[sg];
+    const system = loreqa_prompt('world', vars, false) + '\n\n' + LOREQA_WORLD_FORMAT.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vars ? String(vars[k]) : m) + (add ? '\n\n' + loreqa_prompt(add, {}, false) : '') + await loreqa_flowOcRule();
     const user = JSON.stringify({ work: loreqa_cfg.source, current_point: label, confirmed_changes: loreqa_capTail(divergences || [], 'helperDivMax').map(e => ({ entity: e.entity, dimension: e.dimension, after: e.after, invalidates: e.invalidates })), events_already_played: played.slice(-20), ...(await loreqa_ctxExtras('flow')) });
     try {
         const [bt, bp] = loreqa_flowApi();
@@ -8008,7 +8023,7 @@ async function loreqa_generateWorld(label, divergences, played = []) {
         // 비트가 비면 이유를 남긴다 (원작 흐름은 조건 맞는 비트가 없어 세계 상태만 넣게 됨)
         loreqa_worldNote = p.beats.length ? '' : `원작 비트 없음${out?.diagnostic?.finish ? ` (종료 사유: ${out.diagnostic.finish})` : ''} — 모델이 [BEATS] 칸을 쓰지 않았거나 원작에 다음 사건이 없다고 답함. 다시 생성해 보거나 전개모드 모델을 바꿔 보세요.`;
         loreqa_stat('world.gen'); loreqa_stat('world.public', p.pub.length); loreqa_stat('world.hidden', p.hidden.length); loreqa_stat('world.beats', p.beats.length); loreqa_stat('world.broken', p.beats.filter(b => b.broken).length);
-        return { raw, now: p.now, pub: p.pub, hidden: p.hidden, beats: p.beats, v: LOREQA_WORLD_V, n, nb };
+        return { raw, now: p.now, pub: p.pub, hidden: p.hidden, beats: p.beats, v: LOREQA_WORLD_V, n, nb, sg };
     } catch (e) { loreqa_worldErr = String(e?.message || e || loreqa_state?.lastError || '예외').split('\n')[0]; loreqa_stat('world.fail'); console.warn('[LoreQA] 세계 상태표 생성 실패:', e?.message || e); return null; }
 }
 // 장면 판단: 장면이 바뀔 때 한 번. 지금 장소 · 등장인물, 장면에 닿는 비밀, 조건이 맞는/거의 맞는/이미 일어난 원작 비트
@@ -8162,7 +8177,7 @@ async function loreqa_prepareTurn() {
         // 세계 상태표: 위치가 새롭거나, 줄 수 설정이 바뀌었거나, 표를 만든 뒤 분기 기록이 바뀌었으면 다시 만든다. 실패하면 기존 표를 그대로 쓴다.
         if (useGuard || useWorld) {
             const divN = t.divergences.length, n = Number(cfg.worldCount) || 8, nb = Number(cfg.beatCount) || 5, w = bucket.world;
-            if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || w.nb !== nb || (w.divN ?? -1) !== divN) && cfg.source) {
+            if ((!w || w.v !== LOREQA_WORLD_V || w.n !== n || w.nb !== nb || (w.divN ?? -1) !== divN || (w.sg || 'balance') !== loreqa_stanceGroup()) && cfg.source) {
                 loreqa_stageSet({ pos: '✓', guide: '상태표 ⏳' });
                 const fresh = await loreqa_generateWorld(st.cur.label, loreqa_divFor('world', t.divergences), played);
                 if (fresh) { bucket.world = { ...fresh, divN }; delete bucket.scene; dirty = true; }
@@ -8206,6 +8221,12 @@ async function loreqa_prepareTurn() {
             const withThen = stance === 'follow' || stance === 'canon';
             const show = x => { const b = (W?.beats || []).find(y => y.text === x); if (!b || withThen || !b.then) return x; return x.replace(/\s*\/\s*then\s*[:：].*?(?=\s*\(broken\b|$)/i, ''); };
             if (Number(cfg.flowSceneGate ?? 1) === 0) t.beatsAll = (W?.beats || []).map(b => b.text).filter(live).map(show);
+            // 원작 쪽 묶음: 아직 안 일어난 첫 비트를 다음 이정표로 따로 넣는다 (경로가 붙어 있음)
+            t.stanceGroup = loreqa_stanceGroup();
+            if (t.stanceGroup === 'canon') {
+                const nx = (W?.beats || []).find(b => live(b.text) && !b.broken);
+                if (nx) { t.beatNext = show(nx.text); if (t.beatsAll) t.beatsAll = t.beatsAll.filter(x => x !== t.beatNext); }
+            }
             t.beatsReady = Number(cfg.flowSceneGate ?? 1) === 0 ? [] : (sc.ready || []).filter(live).map(show);
             t.beatsNear = stance === 'follow' ? (sc.near || []).filter(x => live(x) && !(sc.ready || []).includes(x)).map(show) : [];
             t.beatsBroken = stance === 'follow' ? (W?.beats || []).filter(b => b.broken && live(b.text)).map(b => b.text) : [];
@@ -10119,12 +10140,15 @@ function loreqa_injectUnified(messages, t) {
         loreqa_insertSystemSafely(messages, c, '서사 가이드 주입');
         inj.guide = c;
     }
-    if (t.guide || t.beatsReady?.length || t.beatsAll?.length) {
+    if (t.guide || t.beatsReady?.length || t.beatsAll?.length || t.beatNext) {
         const lead = loreqa_prompt((LOREQA_STANCES.find(x => x[0] === loreqa_stance()) || LOREQA_STANCES[2])[2], {}, ko);
         const sec = (title, lines) => lines?.length ? '\n\n' + title + '\n' + lines.map(l => '- ' + l).join('\n') : '';
         const c = LOREQA_GUIDE_BLOCK + '\n' + lead
             + (t.guide ? '\n\n' + (ko ? '# 세계 상태 (화면 밖)' : '# World state (off-screen)') + '\n' + t.guide : '')
-            + sec(ko ? '# 다가오는 원작 사건 (각 사건은 적힌 장소(at)에 적힌 인물(present)이 모였을 때만 시작된다. 지금 장면에 그 조건이 없으면 화면 밖에서 진행되고, 이 장면에는 소식이나 결과로만 닿는다)' : '# Upcoming original events (each starts only where its at: place and present: people come together in this story; if they are not in the current scene, it happens off-screen and reaches this scene only as news or consequences)', t.beatsAll)
+            + sec(ko ? '# 다음 원작 이정표 (route: 인물과 장소가 모이는 길. 조건이 없는 장면에서 바로 시작하지 말고 그 길을 따라 모이게 할 것)' : '# Next original milestone (route: how its people and place come together; never start it in a scene that lacks them, bring them together along the route)', t.beatNext ? [t.beatNext] : [])
+            + sec(t.stanceGroup === 'change'
+                ? (ko ? '# 이 이야기에서 다가오는 일 (바뀐 상황에 맞춘 원작 사건과 바뀐 것의 파급(ripple). 적힌 장소(at)에 적힌 인물(present)이 모였을 때만 시작되고, 아니면 화면 밖에서 진행되어 소식이나 결과로 닿는다)' : '# What comes next in this story\'s world (original events adapted to the changes, and ripples of the changes; each starts only where its at: place and present: people come together, otherwise it happens off-screen and arrives as news or consequences)')
+                : (ko ? '# 다가오는 원작 사건 (각 사건은 적힌 장소(at)에 적힌 인물(present)이 모였을 때만 시작된다. 지금 장면에 그 조건이 없으면 화면 밖에서 진행되고, 이 장면에는 소식이나 결과로만 닿는다)' : '# Upcoming original events (each starts only where its at: place and present: people come together in this story; if they are not in the current scene, it happens off-screen and reaches this scene only as news or consequences)'), t.beatsAll)
             + sec(ko ? '# 지금 일어날 수 있는 원작 사건' : '# Original events that could happen now', t.beatsReady)
             + sec(ko ? '# 조건이 거의 맞는 원작 사건' : '# Original events almost ready', t.beatsNear)
             + sec(ko ? '# 분기로 깨진 원작 사건' : '# Original events broken by the changes', t.beatsBroken)

@@ -213,6 +213,13 @@ comments are Korean.
   are left out of the injected "World state (off-screen)" (the story wins). With world on and any PUBLIC
   line, the judge runs on scene change even when there are no beats / few secrets. DONE beats go to `byPos[key].played` (canon-as-written events never reach the
   ledger) and are excluded from later judgments and regeneration. Skipped when nothing to choose.
+- Stance groups (3.5.0, `loreqa_stanceGroup`): canon (follow / canon) appends editable `worldCanon` to the world prompt
+  (beats in order + "/ route:" how the present people come together); change (change / free) appends `worldChange`
+  (events adapted to the changes + "(ripple)" lines from ledger records); balance = no add-on. The table stores `sg` and is
+  regenerated when the group changes. Canon group injects the first live beat as "다음 원작 이정표" (`t.beatNext`).
+  Harness (testdata/harness/stance.js, 3 → 7 turns): no measurable steering difference between versions or stances (at a
+  quiet INU point every run reached the next arc by turn 4-7); change group showed slightly more invented / ripple. Test
+  stance effects with 7+ turns: 3 turns only finish the current scene.
 - 원작 흐름 (`canonStance`: follow / canon / balance / change / free; off = `compGuide` 0) picks the
   stance prompt in the `[Canon Guide]` block; only READY beats are injected (follow also NEAR and broken
   beats). Beats whose conditions don't hold are never given to the main model: it would pull them in.
