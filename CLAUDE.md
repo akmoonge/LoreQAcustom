@@ -153,6 +153,9 @@ comments are Korean.
   `ledgerDeferLatest` (default on): `scoutCompleted` stops before the newest reply, so it is read
   next turn, after GigaTrans / status-panel / illustration plugins have rewritten it. Reconcile
   only logs a rewind when a message really changed (a shorter readable range is trimmed quietly).
+- Output limit (3.5.3): ledger calls use max(budget, profile maxTokens). An empty body that ended on the output limit
+  (reasoning used it all) is returned at once with `diagnostic.emptyByLimit` instead of retried; extraction then doubles
+  the budget up to 32768 before splitting the batch.
 - PDF (`scoutPdfEncode`, Yumi Provider Manager's method): a text-layer PDF, not images. Type0/CIDFontType2 font with
   no glyph file, one CID per distinct character + ToUnicode CMap, content streams deflated. Gemini reads the text
   layer exactly and bills per page, so `pdfFontPt` (default 1pt, ~1190×841 chars per page) keeps it to a page or two
@@ -220,6 +223,10 @@ comments are Korean.
   Harness (testdata/harness/stance.js, 3 → 7 turns): no measurable steering difference between versions or stances (at a
   quiet INU point every run reached the next arc by turn 4-7); change group showed slightly more invented / ripple. Test
   stance effects with 7+ turns: 3 turns only finish the current scene.
+  3.5.2: change group leaves "as canon" beats out of the injection; ripples first. Quiet-point tests (judge scores how
+  closely the original's next events are replayed, 0-3, 4 points x 2 runs x 7 turns): follow 1.5, balance 0.6, free 0.8,
+  free + "do not replay the original" 0.9 (not added), flow off 1.0. Only follow differs; balance / change / off are
+  within noise (balance does not pull canon in). Owner keeps all stances.
 - 원작 흐름 (`canonStance`: follow / canon / balance / change / free; off = `compGuide` 0) picks the
   stance prompt in the `[Canon Guide]` block; only READY beats are injected (follow also NEAR and broken
   beats). Beats whose conditions don't hold are never given to the main model: it would pull them in.
