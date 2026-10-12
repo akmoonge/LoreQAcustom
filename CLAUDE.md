@@ -128,6 +128,10 @@ comments are Korean.
   same 3 superseded records every run). "note" stays in the records' language and only "reason" uses the output
   language (3.6.1): writing notes in Korean dropped the catch rate to 2/7; with notes in the record language 5/5. Code-only hint `loreqa_staleTurns`: condition / promises slots with no new
   evidence for `ledgerStaleTurns` (40) turns get ⏳ (party / home were noise: long-stable is normal).
+  Fix (3.8.0): flagged rows get a checkbox; "체크한 기록 고치기" runs `scoutLedgerFixChecked` = `scoutLedgerTidyWork` in fix
+  mode (`opts.only` = checked ids, `opts.ctx` = their related records via `withId`, records carry `check_flag` + quotes,
+  locked `SCOUT_CHECK_FIX`); undo via 정리 되돌리기; `sinceTidy` untouched. Test: INU promise rewritten to "only the 灰刃坊
+  duty remains", HP superseded relationship records merged into the newest (history in change), 21 -> 14-17 records.
 - Same entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy's code
   fallback cuts any same-key group to the newest, and a merge output replaces leftovers with its key. Don't rely on
   tidy for quality: record quality comes from the extraction prompt; deterministic cleanup belongs in code.

@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.7.8
+//@version 3.8.0
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.7.8';
+const LOREQA_VER = '3.8.0';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -9357,14 +9357,17 @@ function scoutTidyRecent(messages){
     for(const m of [...(messages||[])].reverse()){if(budget<400||out.length>=6)break;const text=String(m.text||'').slice(-Math.min(2000,budget));out.unshift({index:m.index,role:m.role,text});budget-=text.length;}
     return out;
 }
-async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[]){
-    const live=ledger.events.filter(e=>!ledger.excluded.includes(e.id));
-    if(live.length<2)return {merged:0,dropped:0,cored:0,skipped:true};
+// opts.only: 점검 결과로 고칠 기록 id (그 밖의 기록은 opts.ctx 로 준 관련 기록만 함께 보냄), opts.flags: 기록별 점검 표시
+async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[],opts={}){
+    const fix=opts.only instanceof Set;
+    const live=ledger.events.filter(e=>!ledger.excluded.includes(e.id)&&(!fix||opts.only.has(e.id)||opts.ctx?.has(e.id)));
+    if(live.length<(fix?1:2))return {merged:0,dropped:0,cored:0,skipped:true};
     const idOf=new Map(),evOf=new Map();
     live.forEach((e,i)=>{const r='r'+(i+1);idOf.set(e.id,r);evOf.set(r,e);});
     let position='';try{position=(await loreqa_posLoad(scope))?.cur?.label||'';}catch(_){}
-    const records=live.map(e=>({id:idOf.get(e.id),...(loreqa_slotOf(e)?{slot:e.slot}:{}),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:scoutLocked(e),source_messages:(e.evidence||[]).map(v=>v.index)}));
-    const system=loreqa_prompt('tidy',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_TIDY_LOCKED;
+    const records=live.map(e=>({id:idOf.get(e.id),...(loreqa_slotOf(e)?{slot:e.slot}:{}),entity:e.entity,dimension:e.dimension,category:e.category,change:e.change,after:e.after,invalidates:e.invalidates,when:e.when,core:!!e.core,locked:scoutLocked(e),source_messages:(e.evidence||[]).map(v=>v.index),
+        ...(fix?{quotes:(e.evidence||[]).slice(0,2).map(v=>String(v.quote||'').slice(0,200))}:{}),...(fix&&opts.only.has(e.id)&&opts.flags?.[e.id]?{check_flag:{kind:opts.flags[e.id].kind,reason:opts.flags[e.id].reason}}:{})}));
+    const system=loreqa_prompt('tidy',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_TIDY_LOCKED+(fix?'\n'+SCOUT_CHECK_FIX:'');
     const [bt,bp]=loreqa_branchApi();
     const started=Date.now();
     const response=await loreqa_callLLM([{role:'system',content:system},{role:'user',content:JSON.stringify({work:loreqa_cfg.source,current_point:position||'unknown',records,recent_story_messages:scoutTidyRecent(recentMessages)})}],false,bt,bp,false,false,{ledgerJson:true,outputBudget:16384,silent:true,pdf:Number(loreqa_cfg.branchPdf)===1,step:'장부 정리'});
@@ -9411,7 +9414,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     let cored=0;
     const coreSet=new Map();
     for(const c of Array.isArray(v?.core)?v.core:[]){const r=c?.id;if(!evOf.has(r)||used.has(r)||scoutLocked(evOf.get(r)))continue;coreSet.set(evOf.get(r).id,c.core===true||c.core==='true');}
-    if(!merges.length&&!drops.length&&!coreSet.size){entry.status='정리할 것 없음';ledger.sinceTidy=0;loreqa_stat('tidy.run');loreqa_stat('tidy.nothing');loreqa_stat('tidy.recordsBefore',live.length);return {merged:0,dropped:0,cored:0};}
+    if(!merges.length&&!drops.length&&!coreSet.size){entry.status='정리할 것 없음';if(!fix)ledger.sinceTidy=0;loreqa_stat('tidy.run');loreqa_stat('tidy.nothing');loreqa_stat('tidy.recordsBefore',live.length);return {merged:0,dropped:0,cored:0};}
     // 되돌리기용 직전 장부
     await risuai.pluginStorage.setItem(scoutLedgerBackupKey(scope),JSON.stringify({time:new Date().toISOString(),ledger}));
     const dropIds=new Set(drops.map(d=>d.id)),mergeOf=new Map();
@@ -9425,7 +9428,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     }
     ledger.events=next;
     ledger.excluded=ledger.excluded.filter(id=>next.some(e=>e.id===id));
-    ledger.sinceTidy=0;ledger.lastTidy={time:new Date().toISOString(),merged:merges.length,mergedFrom:merges.reduce((n,m)=>n+m.from.length,0),dropped:drops.length,cored,drops};
+    if(!fix)ledger.sinceTidy=0;ledger.lastTidy={time:new Date().toISOString(),...(fix?{fix:true}:{}),merged:merges.length,mergedFrom:merges.reduce((n,m)=>n+m.from.length,0),dropped:drops.length,cored,drops};
     entry.status=`정리 완료: 합침 ${merges.length}건(원래 ${ledger.lastTidy.mergedFrom}건) · 지움 ${drops.length}건 · ★변경 ${cored}건`+(notes.length?' · '+notes.join(', '):'');
     loreqa_stat('tidy.run');loreqa_stat('tidy.merged',merges.length);loreqa_stat('tidy.dropped',drops.length);loreqa_stat('tidy.cored',cored);loreqa_stat('tidy.recordsBefore',live.length);
     return {merged:merges.length,dropped:drops.length,cored};
@@ -9470,7 +9473,7 @@ async function scoutLedgerCheck(scope){
             const e=evOf.get(f?.id);if(!e||flags[e.id]||!LOREQA_CHECK_KINDS[f?.kind])continue;
             if(f.kind==='unsupported'&&e.manual)continue;
             const w=evOf.get(f?.with);
-            flags[e.id]={kind:f.kind,reason:typeof f.reason==='string'?f.reason.trim().slice(0,200):'',with:w&&w!==e?w.entity+' · '+w.dimension:'',sig:loreqa_checkSig(e)};
+            flags[e.id]={kind:f.kind,reason:typeof f.reason==='string'?f.reason.trim().slice(0,200):'',with:w&&w!==e?w.entity+' · '+w.dimension:'',withId:w&&w!==e?w.id:'',sig:loreqa_checkSig(e)};
         }
         ledger.checks={time:new Date().toISOString(),checked:live.length,flags};
         await scoutLedgerSave(ledger);
@@ -9479,6 +9482,22 @@ async function scoutLedgerCheck(scope){
         loreqa_stat('check.run');loreqa_stat('check.flagged',n);loreqa_stat('check.records',live.length);
         for(const f of Object.values(flags))loreqa_stat('check.'+f.kind);
         return {flagged:n,checked:live.length};
+    });
+}
+// 점검 표시를 보고 고르면 그 기록만 정리 방식으로 고친다 (정리 되돌리기로 되돌릴 수 있음)
+const SCOUT_CHECK_FIX=`FIX MODE: only records with a "check_flag" need fixing; records without it are context: do not merge, drop or re-flag them unless a flagged record merges into one of them. For each flagged record follow its flag: outdated = merge it with the record that settles it (the earlier stage goes into "change") or rewrite it with a single-record merge to the state that holds now; conflict = make the two agree with the newer evidence; unsupported = rewrite it to only what its quotes show, or drop it if nothing remains; minor = drop it. If a flagged record turns out to be fine, leave it unmentioned. Leave "core" empty.`;
+const loreqa_checkPick=new Map(); // scope → 고칠 기록으로 고른 id (창을 다시 그려도 남게 메모리에)
+async function scoutLedgerFixChecked(scope,ids){
+    return scoutLedgerSerial(async()=>{
+        const snap=await scoutSnapshot();if(snap.scope!==scope)throw Error('채팅이 바뀌었습니다.');
+        const ledger=await scoutLedgerLoad(scope);
+        const flags={},only=new Set(),ctx=new Set();
+        for(const id of ids){const e=ledger.events.find(x=>x.id===id);const f=e&&loreqa_checkFlag(ledger,e);if(!f||scoutLocked(e)||ledger.excluded.includes(id))continue;only.add(id);flags[id]=f;if(f.withId)ctx.add(f.withId);}
+        if(!only.size)return {merged:0,dropped:0,fixed:0,skipped:true};
+        const r=await scoutLedgerTidyWork(ledger,scope,'check-fix',scoutCompleted(snap),{only,ctx,flags});
+        if(!r.skipped)await scoutLedgerSave(ledger);
+        loreqa_stat('check.fix');loreqa_stat('check.fixRecords',only.size);
+        return {...r,fixed:only.size};
     });
 }
 async function scoutLedgerTidy(scope,reason='manual'){
@@ -9689,6 +9708,8 @@ async function scoutLedgerPanel(){
     const tidy=document.createElement('button');tidy.textContent='지금 정리';tidy.title='보조 모델이 장부 전체를 보고 중복을 합치고 낡은 기록을 지우고 ★핵심을 다시 매깁니다. 🔒 보호한 기록은 건드리지 않습니다. API 요청 1회.';tidy.onclick=async()=>{tidy.disabled=true;status.textContent='분기 장부 정리 중…';try{const r=await scoutLedgerTidy(scope,'manual');scoutLedgerStatus.set(scope,r.skipped?'정리할 기록이 2건 미만입니다.':`정리 완료: 합침 ${r.merged}건 · 지움 ${r.dropped}건 · ★변경 ${r.cored}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{tidy.disabled=false;}};box.appendChild(tidy);
     const undo=document.createElement('button');undo.textContent='정리 되돌리기';undo.title='마지막 정리 직전의 장부로 되돌립니다. 그 뒤에 새로 읽은 부분은 다시 읽습니다.';undo.onclick=async()=>{if(!confirm('마지막 정리 직전 장부로 되돌릴까요? 그 뒤에 추가된 기록은 다시 읽어서 채웁니다.'))return;undo.disabled=true;try{const t=await scoutLedgerTidyUndo(scope);scoutLedgerStatus.set(scope,'정리 전 장부로 되돌렸습니다 ('+t+'). 그 뒤 부분은 이어서 읽기로 다시 채웁니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{undo.disabled=false;}};box.appendChild(undo);
     scoutLedgerLogButton(box,scope);
+    const pick=loreqa_checkPick.get(scope)||new Set();loreqa_checkPick.set(scope,pick);
+    let fixBtn=null;const fixLabel=()=>{if(fixBtn)fixBtn.textContent=`체크한 기록 고치기 (${pick.size})`;};
     // 버튼을 읽기 / 정리 / 기타 세 줄로 묶는다
     {
         status.style.cssText='margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#181825;border:1px solid #313244;color:#cdd6f4;font-size:12px;line-height:1.5';
@@ -9719,9 +9740,13 @@ async function scoutLedgerPanel(){
         unkeep.onclick=async()=>{unkeep.disabled=true;try{await scoutLedgerSerial(async()=>{const l=await scoutLedgerLoad(scope);delete l.startAt;await scoutLedgerSave(l);});scoutLedgerStatus.set(scope,'시작 위치를 해제했습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{unkeep.disabled=false;}};
         const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,unkeep,fromInfo);
         const fl=document.createElement('span');fl.textContent='시작 위치';fl.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';bar.append(fl,fromRow);
+        fixBtn=document.createElement('button');fixBtn.title='체크한 ⚠ 기록만 보조 모델이 점검 이유대로 고칩니다 (낡음 → 새 기록과 합치거나 지금 상태로 다시 씀, 충돌 → 맞춤, 근거 부족 → 근거만큼 줄이거나 지움, 사소함 → 지움). 정리 되돌리기로 되돌릴 수 있음. API 요청 1회.';
+        fixBtn.onclick=async()=>{const ids=[...pick];if(!ids.length){status.textContent='고칠 기록을 먼저 체크하세요 (⚠ 표시된 기록 앞의 칸).';return;}fixBtn.disabled=true;status.textContent=`체크한 기록 ${ids.length}개 고치는 중…`;try{const r=await scoutLedgerFixChecked(scope,ids);pick.clear();scoutLedgerStatus.set(scope,r.skipped?'고칠 수 있는 기록이 없습니다 (보호했거나 이미 바뀐 기록).':`체크한 ${r.fixed}개를 고쳤습니다: 합침 ${r.merged}건 · 지움 ${r.dropped}건. 결과가 이상하면 정리 되돌리기.`);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{fixBtn.disabled=false;}};
+        const pickAll=document.createElement('button');pickAll.textContent='⚠ 모두 체크';pickAll.title='점검 표시된 기록을 모두 체크합니다';
+        pickAll.onclick=async()=>{try{const l=await scoutLedgerLoad(scope);for(const e of l.events)if(!l.excluded.includes(e.id)&&!scoutLocked(e)&&loreqa_checkFlag(l,e))pick.add(e.id);await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}};
         const check=document.createElement('button');check.textContent='기록 점검';check.title='보조 모델이 장부 전체를 보고 낡음 · 충돌 · 근거 부족 · 사소함으로 보이는 기록에 ⚠ 표시만 합니다. 기록은 바꾸지 않습니다. 고치거나 제외하면 표시가 사라집니다. API 요청 1회.';
         check.onclick=async()=>{check.disabled=true;status.textContent='기록 점검 중…';try{const r=await scoutLedgerCheck(scope);scoutLedgerStatus.set(scope,r.checked?`점검 완료: ${r.checked}건 중 ${r.flagged}건에 ⚠ 표시. 각 기록을 열어 이유를 보고 고치거나 제외하세요.`:'점검할 기록이 없습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{check.disabled=false;}};
-        group('정리',[tidy,undo,check]);
+        group('정리',[tidy,undo,check,pickAll,fixBtn]);fixLabel();
         const expBtn=document.createElement('button');expBtn.textContent='JSON 내보내기';expBtn.title='이 채팅의 분기 기록 전체(근거·제외 표시 포함)를 JSON 파일로 저장합니다.';
         expBtn.onclick=async()=>{try{const data=await loreqa_ledgerExport(scope);loreqa_downloadJson(`loreqa-ledger-${loreqa_fileSafe(snap.chat?.name||snap.char?.name)}.json`,data);status.textContent=`분기 기록 ${data.events.length}개를 JSON 파일로 내보냈습니다. 브라우저 다운로드 폴더를 확인하세요.`;}catch(e){status.textContent=String(e.message||e);}};
         const impBtn=(label,replace)=>{const b=document.createElement('button');b.textContent=label;
@@ -9772,7 +9797,9 @@ async function scoutLedgerPanel(){
         summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(loreqa_slotOf(event)?`[${LOREQA_PC_SLOTS[event.slot].ko}] `:'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
         if(excluded)summary.classList.add('loreqa-excluded');
         {const cf=excluded?null:loreqa_checkFlag(ledger,event),st=excluded?0:loreqa_staleTurns(ledger,event);
-         if(cf||st){summary.prepend(cf?'⚠ ':'⏳ ');const t=document.createElement('div');t.style.cssText='font-size:11px;margin:2px 0 0 14px;white-space:normal;color:'+(cf?'#f9e2af':'#a6adc8');
+         if(cf||st){summary.prepend(cf?'⚠ ':'⏳ ');
+           if(cf&&!scoutLocked(event)){const cb=document.createElement('input');cb.type='checkbox';cb.checked=pick.has(event.id);cb.title='점검 이유대로 고칠 기록으로 체크 (위 "체크한 기록 고치기")';cb.style.cssText='margin:0 4px 0 0;vertical-align:middle';
+             cb.addEventListener('click',ev=>{ev.stopPropagation();if(cb.checked)pick.add(event.id);else pick.delete(event.id);fixLabel();});summary.prepend(cb);}const t=document.createElement('div');t.style.cssText='font-size:11px;margin:2px 0 0 14px;white-space:normal;color:'+(cf?'#f9e2af':'#a6adc8');
            t.textContent=(cf?`⚠ 점검(${LOREQA_CHECK_KINDS[cf.kind]}): ${cf.reason}${cf.with?` — 관련: ${cf.with}`:''}`:'')+(cf&&st?' · ':'')+(st?`⏳ ${st}턴 동안 새 근거 없음 — 아직 맞는지 확인`:'');summary.appendChild(t);}}
         {const tr=loreqa_ledgerTr.get(event.id);if(tr&&tr.src===loreqa_ledgerTrSrc(event)){const t=document.createElement('div');t.textContent='↳ '+tr.t;t.style.cssText='font-size:11px;color:#a6adc8;margin:2px 0 0 14px;white-space:normal';summary.appendChild(t);}}
         row.appendChild(summary);
