@@ -234,6 +234,16 @@ comments are Korean.
   closely the original's next events are replayed, 0-3, 4 points x 2 runs x 7 turns): follow 1.5, balance 0.6, free 0.8,
   free + "do not replay the original" 0.9 (not added), flow off 1.0. Only follow differs; balance / change / off are
   within noise (balance does not pull canon in). Owner keeps all stances.
+- 화면 밖 진행 (3.7.x, `loreqa_offscreenHours` / `loreqa_offscreenRule`): the scene judge also answers TIME (story hours over
+  `turns_since_last_check` turns) and OFFSCREEN_DONE (beats whose people are away from the story's characters). Code adds the
+  hours to `st.offClock`; when it reaches the stance threshold (`LOREQA_OFFSCREEN_HOURS`: canon 336, balance 48, change 24,
+  free 12; follow = never) the first such beat passes off-screen: it joins `played`, goes to `st.offscreen` (main model gets
+  the last 3 for `offscreenTurns` (5) replies as "그사이 화면 밖에서 일어난 일"), and the position moves to its chapter
+  ("Ch.N (화면 밖 진행)"). Letting the model apply "only when days passed" itself skipped 12 chapters in 8 turns on minutes
+  of story time (3.7.0 test); with the code clock: follow 0, canon 0 (under 2 weeks), balance / free 0-6 by story time.
+- 원작 브리핑: reads flow mode's persona / author-note toggles (`flowPersona`, `flowAuthorNote`; used to follow the Q&A
+  toggle and was usually off). Its last section is [TIME JUMP OPTIONS] (3-4 canon events with "to get involved", 1-2 of the
+  player character's own threads), shown only: split off before the audit pass and the main-model reference.
 - 원작 흐름 (`canonStance`: follow / canon / balance / change / free; off = `compGuide` 0) picks the
   stance prompt in the `[Canon Guide]` block; only READY beats are injected (follow also NEAR and broken
   beats). Beats whose conditions don't hold are never given to the main model: it would pull them in.
