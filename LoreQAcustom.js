@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.11
+//@version 3.4.12
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.11';
+const LOREQA_VER = '3.4.12';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7525,7 +7525,7 @@ The last event of the original that has already happened at this point, and the 
 - A concrete fact true at the cut that some characters do not know and could let slip, reveal or act on by mistake, with who does not know and who knows. A plan already in motion that its targets do not know (who has been sent against them, a trap already laid) counts even if [NOW] mentions it.
 - Not secrets: anything placed after the cut (check when the original makes it true: memories regained, sides changed and truths learned later on are not lines here), news someone has not heard yet (a fight won, a technique learned, a place reached), unknown places, vague items ("does not know the whole story of X"), motives, mechanics, weaknesses, future plans.
 - "known to" lists only characters the original shows learning it by the cut, or that confirmed_changes say know it. Never guess who might have found out; drop a name you are not sure of, and the line if no one is sure.
-- Secrets created by the story count only if confirmed_changes state them; never invent new ones. A record of what someone did or has is not a secret: it needs a record that someone does not know it.
+- Secrets created by the story count only if confirmed_changes state them; never invent new ones. A record of what someone did or has is not a secret: it needs a record that someone does not know it. Never a line that someone does not know what the player character owns, made, was given or agreed to (her items, weapons, deals, promises): that is not a secret of the original world.
 - Before writing a line, check confirmed_changes: if they say a character in "does not know" already knows it, remove that character, and the line if no one is left.
 - confirmed_changes may say that the story's own character knows a secret. It is still a secret for everyone else: keep the line and add that character to "known to".` } },
     sceneJudge: { label: '장면 판단 (장소 · 인물 · 비밀 · 원작 비트)', ph: [],
@@ -7876,7 +7876,9 @@ function loreqa_stateKey(e) {
 //   set: 플레이어 칸 중 지닌 것·비밀만
 function loreqa_divFor(kind, list, present = '') {
     const L = Array.isArray(list) ? list : [], sl = e => loreqa_slotOf(e);
-    if (kind === 'world') return L.filter(e => !sl(e));
+    // 세계 상태표: 그녀의 동행 · 거처 · 몸 상태만 뺀다 (장면마다 바뀜). 물건 · 약속 · 아는 비밀 · 함께한 원작 사건은 원작 세계를 바꾸므로 넣는다
+    //   (전에는 칸 기록을 전부 빼서, 이미 받은 칼을 모르고 '刀々斎이 칼을 벼리는 중'이라고 썼다)
+    if (kind === 'world') return L.filter(e => !['party', 'home', 'condition'].includes(sl(e)));
     if (kind === 'scene') return L.filter(e => !sl(e) || sl(e) === 'party');
     if (kind === 'set') return L.filter(e => !sl(e) || ['items', 'secrets', 'events'].includes(sl(e)));
     if (kind === 'char') {
