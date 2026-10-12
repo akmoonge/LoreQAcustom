@@ -243,6 +243,8 @@ comments are Korean.
   the last 3 for `offscreenTurns` (5) replies as "그사이 화면 밖에서 일어난 일"), and the position moves to its chapter
   ("Ch.N (화면 밖 진행)"). Letting the model apply "only when days passed" itself skipped 12 chapters in 8 turns on minutes
   of story time (3.7.0 test); with the code clock: follow 0, canon 0 (under 2 weeks), balance / free 0-6 by story time.
+- 원작 브리핑 language: `briefLang` dropdown (default 한국어, or "output" = 출력 언어), because 출력 언어 is the Q&A injection
+  language and users often set it to the story language (the briefing came out in Japanese).
 - 원작 브리핑: reads flow mode's persona / author-note toggles (`flowPersona`, `flowAuthorNote`; used to follow the Q&A
   toggle and was usually off). Its last section is [TIME JUMP OPTIONS] (3-4 canon events with "to get involved", 1-2 of the
   player character's own threads), shown only: split off before the audit pass and the main-model reference.

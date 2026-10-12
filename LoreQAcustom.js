@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.7.6
+//@version 3.7.7
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.7.6';
+const LOREQA_VER = '3.7.7';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -127,6 +127,7 @@ const LOREQA_DEFAULTS = {
     helperDivMax: 60,    // 보조 모델(Q&A · 가드 · 가이드)에 넘기는 분기 기록 수
     attachChars: 0,      // 페르소나 · 작가의 노트 첨부 글자 수 (0 = 제한 없음)
     attachV: 1,          // 1 = 첨부 글자 수 기본값을 제한 없음으로 바꾼 뒤의 설정 (옛 기본값 4000 은 한 번 0 으로)
+    briefLang: '한국어', // 원작 브리핑을 쓸 언어. 'output' = 출력 언어(Q&A 주입 언어)를 따름. 브리핑은 메인 모델에 안 들어가므로 기본은 한국어
     briefLoreN: 8,       // 원작 브리핑에 넣는 로어 개수
     briefLoreChars: 1800, // 원작 브리핑 로어 항목당 글자 수
     inheritBranch: 1,    // 브랜치 · 복사본 채팅이 원본 채팅의 분기 기록 · 전개 위치 · 고정 변경 기록을 이어받음
@@ -8913,9 +8914,11 @@ Return these six sections, short and specific:
 If no evidence, say 확인 불가. A forecast never counts as an event. Cite only real sources actually supplied/retrieved, never fabricated chapter numbers or URLs. Keep within roughly 1500 Korean characters unless essential.`;
 const SCOUT_KOREAN_RE=/^\s*(한국어|한글|korean|ko|ko-kr)\s*$/i;
 function scoutLang(){return String(loreqa_cfg.language||'').trim()||'한국어';}
+// 원작 브리핑 언어: 사용자가 읽는 칸이라 출력 언어(이야기 언어로 맞춰 두는 경우가 많음)와 따로 고른다
+function scoutBriefLang(){const v=String(loreqa_cfg.briefLang??'한국어').trim();return v==='output'?scoutLang():(v||'한국어');}
 // 한국어면 원래 프롬프트를 그대로 쓰고, 그 외 언어면 출력 지시만 바꾼다.
 function scoutRule(){
-    const lang=scoutLang();
+    const lang=scoutBriefLang();
     if(SCOUT_KOREAN_RE.test(lang))return SCOUT_RULE_BASE;
     return SCOUT_RULE_BASE
       .replace('Write concise Korean. The story and sources may be in another language: still write the whole briefing in this language, keeping names as they are written.',`Write concise ${lang}. Every heading and all content must be in ${lang}, even when the story and sources are in another language; keep names as they are written.`)
@@ -9203,7 +9206,7 @@ async function scoutRun(force=false) {
         if((await scoutSnapshot()).key!==snap.key){scoutShow('조회 중 채팅 또는 설정이 바뀌어 결과를 폐기했습니다. 다시 조회해 주세요.');return;}
         const pending=ledger.hashes.length<scoutCompleted(snap).length;
         const ledgerNotice=pending?'※ 중대 분기 기록은 일부 미완료입니다. 일반 조회는 저장된 기록과 제공된 대화로 진행했습니다. 중대 분기 기록에서 이어서 읽기를 시도할 수 있습니다.\n\n':'';
-        const display='[원작 사전정보 · 메인 모델 참고용 / 전개 강제·인물 지식 자동 부여 없음]\n\n'+ledgerNotice+report+(jumps?'\n\n### '+(loreqa_isKO()?'타임 점프 후보 (선택지 · 주입 안 됨)':'Time jump options (choices, not injected)')+'\n'+jumps:'');
+        const display='[원작 사전정보 · 메인 모델 참고용 / 전개 강제·인물 지식 자동 부여 없음]\n\n'+ledgerNotice+report+(jumps?'\n\n### '+(loreqa_isKO(scoutBriefLang())?'타임 점프 후보 (선택지 · 주입 안 됨)':'Time jump options (choices, not injected)')+'\n'+jumps:'');
         scoutCache={key:snap.key,extraKey,text:display,reference:report};scoutShow(display);
       }catch(error){scoutCache=null;scoutShow('사전정보 조회 실패: '+String(error?.message||error));}
     })();
@@ -10518,6 +10521,7 @@ function loreqa_buildFlowContent(left,right){
     briefBtns.appendChild(briefBtn);
     const briefMore=document.createElement('details');briefMore.className='loreqa-fold';briefMore.style.marginTop='6px';
     {const sm=document.createElement('summary');sm.className='loreqa-section-title';sm.textContent='세부 설정';briefMore.appendChild(sm);}
+    briefMore.appendChild(loreqa_createRow('브리핑 언어',loreqa_createSelect('loreqa-brief-lang',[{value:'한국어',label:'한국어 (기본)'},{value:'output',label:'출력 언어 따라가기'},{value:'English',label:'English'},{value:'日本語',label:'日本語'},{value:'中文',label:'中文'}],String(loreqa_cfg.briefLang??'한국어'),async v=>{loreqa_cfg.briefLang=v;await loreqa_saveConfig();}),'브리핑과 타임 점프 후보를 쓸 언어. 브리핑은 메인 모델에 들어가지 않으므로 읽기 편한 언어로. 출력 언어(Q&A 주입 언어)를 이야기 언어로 맞춰 둔 경우에도 이 값을 따름'));
     loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
     loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
