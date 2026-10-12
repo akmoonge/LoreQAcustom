@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.8
+//@version 3.4.9
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.8';
+const LOREQA_VER = '3.4.9';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3648,6 +3648,53 @@ async function loreqa_renderStatus() {
             }));
         card.appendChild(d);
     }
+    if (st.cur) loreqa_renderAltPreview(card, snap, st);
+}
+// 실험: 같은 위치 · 같은 분기 기록으로 다른 전개 방식(비트 ↔ 목록)을 만들어 보여 주기만 한다. 저장 · 주입하지 않는다.
+//   결과는 창을 다시 그려도 남도록 메모리에만 둔다 (위치가 바뀌면 지난 위치 결과라고 표시)
+let loreqa_altPreview = null;
+function loreqa_renderAltPreview(card, snap, st) {
+    const style = (loreqa_cfg.flowStyle || 'beats') === 'list' ? 'list' : 'beats', other = style === 'list' ? 'beats' : 'list';
+    const name = { beats: '비트 모드 (세계 상태표)', list: '목록 모드 (시점 가드 + 서사 가이드)' };
+    const b = st.byPos[st.cur.key] || {};
+    const d = loreqa_el('details'); d.open = !!loreqa_altPreview && loreqa_altPreview.key === st.cur.key;
+    d.appendChild(loreqa_el('summary', '', `실험: ${name[other]}로도 뽑아 보기`));
+    d.appendChild(loreqa_el('div', 'loreqa-muted', `지금 위치와 분기 기록으로 ${name[other]} 결과를 만들어 옆에 보여 주기만 합니다. 저장하지 않고 메인 모델에도 넣지 않으며 지금 쓰는 결과도 바꾸지 않습니다. 장면 판단은 하지 않습니다. 누를 때마다 보조 호출 ${other === 'list' ? 2 : 1}번 (웹 검색은 지금 설정대로).`));
+    const P = loreqa_altPreview;
+    const box = (title, text) => {
+        const w = loreqa_el('div'); w.style.cssText = 'flex:1 1 300px;min-width:0';
+        w.appendChild(loreqa_el('div', '', title));
+        const a = loreqa_el('textarea', 'loreqa-area'); a.readOnly = true; a.style.minHeight = '260px'; a.value = text || '(없음)';
+        w.appendChild(a); return w;
+    };
+    if (P) {
+        const cur = style === 'beats' ? (b.world?.raw || '') : [b.secrets ? '[시점 가드]\n' + b.secrets : '', b.guide ? '[서사 가이드]\n' + b.guide : ''].filter(Boolean).join('\n\n');
+        const row = loreqa_el('div'); row.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:6px';
+        row.append(box(`지금 쓰는 방식: ${name[style]}`, cur || '(아직 생성 안 됨)'), box(`실험: ${name[P.style]} · ${P.time}${P.key !== st.cur.key ? ` · 지난 위치 ${P.label}` : ''}`, P.busy ? '생성 중…' : P.text));
+        d.appendChild(row);
+    }
+    d.appendChild(loreqa_btn(P?.busy ? '생성 중…' : '뽑아 보기', async e => {
+        if (loreqa_altPreview?.busy) return;
+        e.target.disabled = true;
+        const key = st.cur.key, label = st.cur.label;
+        loreqa_altPreview = { key, label, style: other, busy: true, time: new Date().toTimeString().slice(0, 5), text: '' };
+        loreqa_renderStatus();
+        let text = '';
+        try {
+            const div = loreqa_divFor('world', await loreqa_helperDivergences(snap));
+            if (other === 'beats') {
+                const W = await loreqa_generateWorld(label, div, Array.isArray(b.played) ? b.played : []);
+                text = W?.raw || '✗ 세계 상태표 생성 실패: ' + (loreqa_worldErr || '빈 응답');
+            } else {
+                const [g, gd] = await Promise.all([loreqa_generateGuard(label, div), loreqa_generateGuide(label, div)]);
+                text = ['[시점 가드]\n' + (g || '✗ 생성 실패: ' + (loreqa_state?.lastError || '빈 응답')), '[서사 가이드]\n' + (gd || '✗ 생성 실패: ' + (loreqa_state?.lastError || '빈 응답'))].join('\n\n');
+            }
+        } catch (err) { text = '✗ 실패: ' + (err?.message || err); }
+        loreqa_altPreview = { ...loreqa_altPreview, busy: false, text };
+        loreqa_stat('flow.altPreview');
+        loreqa_renderStatus();
+    }));
+    card.appendChild(d);
 }
 
 
