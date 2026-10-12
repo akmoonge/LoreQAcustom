@@ -123,7 +123,8 @@ comments are Korean.
   branch-API call gives a verdict for EVERY record (ok / outdated / conflict / unsupported / minor, with a "note" first);
   flags only, never edits. Stored in `ledger.checks.flags[id]` with a sig of entity+dimension+after, so an edited record
   hides its flag. A "list only the problems" format missed the stale record 6/6; per-record verdicts caught it 3/3 (HP: the
-  same 3 superseded records every run). Code-only hint `loreqa_staleTurns`: condition / promises slots with no new
+  same 3 superseded records every run). "note" stays in the records' language and only "reason" uses the output
+  language (3.6.1): writing notes in Korean dropped the catch rate to 2/7; with notes in the record language 5/5. Code-only hint `loreqa_staleTurns`: condition / promises slots with no new
   evidence for `ledgerStaleTurns` (40) turns get ⏳ (party / home were noise: long-stable is normal).
 - Same entity + dimension duplicates never reach the main model (`loreqa_latestStates` keeps the newest); tidy's code
   fallback cuts any same-key group to the newest, and a merge output replaces leftovers with its key. Don't rely on

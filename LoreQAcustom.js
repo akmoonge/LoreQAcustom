@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.6.0
+//@version 3.6.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.6.0';
+const LOREQA_VER = '3.6.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -9381,7 +9381,7 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
 //   표시는 ledger.checks.flags[기록 id] 에 남고, 기록 내용이 바뀌면(sig 가 달라지면) 보이지 않는다
 const SCOUT_CHECK_LOCKED=`Each record has an "id" (r1, r2, ...), its source message numbers and up to two quotes from them. Go through the records one by one and give a verdict for EVERY id, in order. Return JSON only:
 {"checks":[{"id":"r1","note":"what later records or the story say about it, a few words","kind":"ok"},{"id":"r2","note":"...","kind":"outdated","with":"r7","reason":"one short sentence"}]}
-"note" comes first: for each record, look for later records about the same person or thing before deciding. "kind" is ok, outdated, conflict, unsupported or minor. "with" is the id of the record that settles or contradicts it, or "". Give "with" and "reason" only when kind is not ok. Write "note" and "reason" in {{language}}, naming people and things, never record ids. No Markdown, no explanation.`;
+"note" comes first: for each record, look for later records about the same person or thing before deciding. "kind" is ok, outdated, conflict, unsupported or minor. "with" is the id of the record that settles or contradicts it, or "". Give "with" and "reason" only when kind is not ok. Write "note" in the records' language. Write "reason" in {{language}} even when the records are in another language, keeping names of people and things as the records write them, never record ids. No Markdown, no explanation.`;
 const LOREQA_CHECK_KINDS={outdated:'낡음',conflict:'충돌',unsupported:'근거 부족',minor:'사소함'};
 const loreqa_checkSig=e=>scoutHash(JSON.stringify([e.entity,e.dimension,e.after]));
 function loreqa_checkFlag(ledger,e){const f=ledger?.checks?.flags?.[e.id];return f&&f.sig===loreqa_checkSig(e)?f:null;}
