@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.8.1
+//@version 3.8.2
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.8.1';
+const LOREQA_VER = '3.8.2';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -10549,9 +10549,11 @@ function loreqa_buildFlowContent(left,right){
     const briefBtn=document.createElement('button');briefBtn.textContent='브리핑 생성';
     briefBtn.onclick=async()=>{briefBtn.disabled=true;try{await scoutRun(true);}finally{briefBtn.disabled=false;}};
     briefBtns.appendChild(briefBtn);
+    // 브리핑 언어: 버튼 옆에 바로 (세부 설정 안에 접혀 있으면 찾기 어려웠다)
+    {const ls=loreqa_createSelect('loreqa-brief-lang',[{value:'한국어',label:'한국어 (기본)'},{value:'output',label:'출력 언어 따라가기'},{value:'English',label:'English'},{value:'日本語',label:'日本語'},{value:'中文',label:'中文'}],String(loreqa_cfg.briefLang??'한국어'),async v=>{loreqa_cfg.briefLang=v;await loreqa_saveConfig();});ls.title='브리핑 · 타임 점프 후보 · 분기 기록 점검 이유를 쓸 언어. 모두 메인 모델에 들어가지 않으므로 읽기 편한 언어로. 출력 언어(Q&A 주입 언어)를 이야기 언어로 맞춰 둔 경우에도 이 값을 따름';ls.style.maxWidth='160px';
+     const lw=document.createElement('label');lw.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;color:#a6adc8';lw.append('언어',ls);briefBtns.appendChild(lw);}
     const briefMore=document.createElement('details');briefMore.className='loreqa-fold';briefMore.style.marginTop='6px';
     {const sm=document.createElement('summary');sm.className='loreqa-section-title';sm.textContent='세부 설정';briefMore.appendChild(sm);}
-    briefMore.appendChild(loreqa_createRow('브리핑 언어',loreqa_createSelect('loreqa-brief-lang',[{value:'한국어',label:'한국어 (기본)'},{value:'output',label:'출력 언어 따라가기'},{value:'English',label:'English'},{value:'日本語',label:'日本語'},{value:'中文',label:'中文'}],String(loreqa_cfg.briefLang??'한국어'),async v=>{loreqa_cfg.briefLang=v;await loreqa_saveConfig();}),'브리핑 · 타임 점프 후보 · 분기 기록 점검 이유를 쓸 언어. 모두 메인 모델에 들어가지 않으므로 읽기 편한 언어로. 출력 언어(Q&A 주입 언어)를 이야기 언어로 맞춰 둔 경우에도 이 값을 따름'));
     loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
     loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
