@@ -176,6 +176,8 @@ comments are Korean.
   written in the story language and fed `loreqa_divFor('world')`. `flowSceneGate` (beats mode, default 0 since 3.3.15):
   0 = all beats with at/present conditions + all secrets + whole PUBLIC, main model decides; 1 = scene judge picks
   (READY / SECRETS / ONSCREEN). A harness A/B (testdata/harness/gen.js) showed no pull-in either way.
+- 실험 미리보기 (`loreqa_renderAltPreview`, 3.4.9): the position card builds the other style (beats ↔ list) for the same
+  position + ledger and shows it next to the current one; memory only (`loreqa_altPreview`), never saved or injected.
 - World table prompt (3.3.1): all content rules (source/search, NOW, BEATS, PUBLIC, HIDDEN) are in the editable
   `world` prompt in numbered sections; the locked `LOREQA_WORLD_FORMAT` is only the four-tag line format.
 - 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
