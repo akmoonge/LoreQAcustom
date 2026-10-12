@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.7
+//@version 3.4.8
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.7';
+const LOREQA_VER = '3.4.8';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3640,7 +3640,7 @@ async function loreqa_renderStatus() {
                 bk3.scene = { gen: s3.sceneGen || 0, w: scoutHash(W2.raw || JSON.stringify([W2.hidden, W2.beats])), at: fresh.list.filter(m => ['char', 'assistant'].includes(m.role)).length, ...r };
                 if (r.done.length) bk3.played = [...new Set([...pl, ...r.done])].slice(-30);
                 await loreqa_posSave(snap.scope, s3);
-                say(r.failed ? '✗ 장면 판단 실패: ' + String(loreqa_state?.lastError || '빈 응답').split('\n')[0] + ' — 비밀은 앞쪽 몇 개만, 원작 비트는 넣지 않습니다.' : '✓ 지금 장면을 다시 판단했습니다.');
+                say(r.failed ? '✗ 장면 판단 실패: ' + String(loreqa_state?.lastError || '빈 응답').split('\n').map(s => s.trim()).filter(Boolean).join(' · ').slice(0, 700) + ' — 비밀은 앞쪽 몇 개만, 원작 비트는 넣지 않습니다.' : '✓ 지금 장면을 다시 판단했습니다.');
             }),
             loreqa_btn('끝난 비트 초기화', async () => {
                 const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label);
@@ -5767,7 +5767,7 @@ function loreqa_floatHtml() {
     loreqa_float.calls = loreqa_float.calls.filter(c => !c.end || now - c.end < (c.ok ? keepOk : keepErr)).slice(-6);
     if (!loreqa_float.calls.length) return '';
     const xy = loreqa_cfg.floatXY;
-    const pos = loreqa_cfg.floatPos === 'custom' && xy && Number.isFinite(xy.x) && Number.isFinite(xy.y) ? `left:${Math.max(0, Math.round(xy.x))}px;top:${Math.max(0, Math.round(xy.y))}px`
+    const pos = loreqa_cfg.floatPos === 'custom' && xy && Number.isFinite(xy.x) && Number.isFinite(xy.y) ? `left:min(${Math.max(0, Math.round(xy.x))}px, calc(100vw - 250px));top:min(${Math.max(0, Math.round(xy.y))}px, calc(100vh - 80px))`
         : { tr: 'top:10px;right:10px', br: 'bottom:10px;right:10px', tl: 'top:10px;left:10px', bl: 'bottom:10px;left:10px' }[loreqa_cfg.floatPos] || 'bottom:10px;right:10px';
     const card = c => {
         const sec = ((c.end || now) - c.start) / 1000;
@@ -5785,15 +5785,25 @@ function loreqa_floatHtml() {
     };
     return `<div style="position:fixed;${pos};z-index:1000;display:flex;flex-direction:column;gap:6px;pointer-events:none">${loreqa_float.calls.map(card).join('')}</div>`;
 }
-async function loreqa_floatRender() {
+// 한 번 그리기가 멈춰 있으면(본 화면 연결이 끊김) 뒤의 그리기가 전부 줄 서서 막히므로 5초에서 끊는다
+function loreqa_floatRender() {
+    let t;
+    return Promise.race([loreqa_floatRenderNow(), new Promise(r => { t = setTimeout(() => { loreqa_float.el = null; console.warn('[LoreQA] 진행 상황 창: 본 화면 응답이 없어 다시 붙입니다'); r(); }, 5000); })]).finally(() => clearTimeout(t));
+}
+async function loreqa_floatRenderNow() {
     const html = Number(loreqa_cfg.floatOn ?? 1) === 1 ? loreqa_floatHtml() : '';
     if (!html && !loreqa_float.el) return;
+    // 호출 묶음이 새로 시작될 때마다 붙여 둔 창이 아직 본 화면에 있는지 본다 (화면이 다시 그려지면 떨어져 나가 안 보인 채로 남음)
+    if (loreqa_float.el && loreqa_float.recheck && html) {
+        loreqa_float.recheck = false;
+        try { const doc = await risuai.getRootDocument(); if (!doc || !(await doc.querySelector('.' + LOREQA_FLOAT_CLASS))) loreqa_float.el = null; } catch (e) { loreqa_float.el = null; }
+    }
     if (!loreqa_float.el) {
         // 권한이 거부됐으면 30초 동안 다시 묻지 않는다
         if (Date.now() - loreqa_float.denied < 30000) return;
         try {
             const doc = typeof risuai !== 'undefined' && typeof risuai.getRootDocument === 'function' ? await risuai.getRootDocument() : null;
-            if (!doc) { loreqa_float.denied = Date.now(); return; }
+            if (!doc) { loreqa_float.denied = Date.now(); console.warn('[LoreQA] 진행 상황 창: 본 화면 접근이 거부됐거나 지원되지 않습니다'); return; }
             let el = await doc.querySelector('.' + LOREQA_FLOAT_CLASS);
             if (!el) {
                 const body = await doc.querySelector('body'); if (!body) { loreqa_float.denied = Date.now(); return; }
@@ -5810,12 +5820,12 @@ async function loreqa_floatRender() {
 async function loreqa_floatDragSetup(doc, el) {
     if (typeof el.addEventListener !== 'function') return;
     const body = await doc.querySelector('body');
-    let drag = null, moveId = null, upId = null;
+    let drag = null, moveId = null, upId = null, cancelId = null;
     const xyOf = ev => ({ x: Number(ev?.clientX ?? ev?.pageX), y: Number(ev?.clientY ?? ev?.pageY) });
     const end = async () => {
         if (!drag) return; drag = null;
-        try { if (moveId) await body.removeEventListener('pointermove', moveId); if (upId) await body.removeEventListener('pointerup', upId); } catch (e) {}
-        moveId = upId = null;
+        try { if (moveId) await body.removeEventListener('pointermove', moveId); if (upId) await body.removeEventListener('pointerup', upId); if (cancelId) await body.removeEventListener('pointercancel', cancelId); } catch (e) {}
+        moveId = upId = cancelId = null;
         loreqa_saveConfig();
     };
     await el.addEventListener('pointerdown', async ev => {
@@ -5825,16 +5835,19 @@ async function loreqa_floatDragSetup(doc, el) {
         drag = { sx: p.x, sy: p.y, x: r.left, y: r.top };
         moveId = await body.addEventListener('pointermove', mv => {
             if (!drag) return;
+            if (mv?.buttons === 0) { end(); return; }
             const q = xyOf(mv); if (!Number.isFinite(q.x)) return;
             loreqa_cfg.floatPos = 'custom';
             loreqa_cfg.floatXY = { x: drag.x + q.x - drag.sx, y: drag.y + q.y - drag.sy };
             loreqa_floatKick();
         });
         upId = await body.addEventListener('pointerup', end);
+        cancelId = await body.addEventListener('pointercancel', end);
     });
 }
 // 그리기는 한 줄로 세운다. 진행 중이거나 곧 사라질 카드가 있으면 0.5초마다 다시 그린다.
 function loreqa_floatKick() {
+    if (!loreqa_float.timer) loreqa_float.recheck = true;
     loreqa_float.chain = loreqa_float.chain.then(loreqa_floatRender).catch(() => {});
     if (!loreqa_float.timer) loreqa_float.timer = setInterval(() => {
         if (!loreqa_float.calls.length) { clearInterval(loreqa_float.timer); loreqa_float.timer = null; }
