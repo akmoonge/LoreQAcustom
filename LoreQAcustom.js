@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.8.3
-//@version 3.8.3
+//@display-name 원작견 개조판 v3.8.4
+//@version 3.8.4
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.8.3';
+const LOREQA_VER = '3.8.4';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -616,7 +616,8 @@ function loreqa_envCalc(p, R = loreqa_envRule()) {
             charLogs, setLogs,
             posReadMsgs: posTurns,
             sceneTurns: clamp(R.sceneTokens / turn, 2, 6),
-            posReadChars: Math.round(R.posTokens * cpt),
+            // 글자 수 상한이 정한 턴 수를 깎지 않게 (최소 3턴으로 올린 경우 토큰 예산보다 길다)
+            posReadChars: Math.round(Math.max(R.posTokens, posTurns * turn) * cpt),
             divMainChars,
             ledgerTidyEvery: clamp(divMainChars / cpt / R.recordTokens * R.tidyFill, 8, 60),
         },
