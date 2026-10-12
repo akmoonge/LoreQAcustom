@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.5.3
+//@version 3.6.0
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.5.3';
+const LOREQA_VER = '3.6.0';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -119,6 +119,7 @@ const LOREQA_DEFAULTS = {
     guardChars: 6000,    // (구버전) 시점 가드 결과 글자 수. 세계 상태표로 바뀐 뒤로는 guideChars 하나로 셈
     guideChars: 6000,    // 서사 가이드 결과 글자 수
     fixedChars: 3000,    // 고정 변경 기록 주입 글자 수
+    ledgerStaleTurns: 40, // 몸 상태·약속 기록이 이 턴 수 넘게 갱신되지 않으면 분기 기록 창에 '오래됨' 표시 (0 = 끔)
     pcEventsChars: 4000, // 주인공 칸 '함께한 원작 사건' 목록 글자 수. 넘으면 오래된 줄부터 빠짐 (0 = 제한 없음)
     divMainChars: 6000,  // 메인 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
     divHelperChars: 12000, // 보조 모델에 넣는 분기 기록 블록 글자 수 (고정 변경 기록 제외)
@@ -3400,7 +3401,7 @@ function loreqa_buildTabs(p) {
     const [tl, tr] = split('track', [], []);
     panes.track.pane.classList.add('loreqa-pane-track');
     loreqa_buildBranchContent(tl, tr);
-    tr.appendChild(loreqa_promptSection(['ledger', 'tidy', 'injDiv']));
+    tr.appendChild(loreqa_promptSection(['ledger', 'tidy', 'ledgerCheck', 'injDiv']));
     const [fl, fr] = split('flow', [], []);
     panes.flow.pane.classList.add('loreqa-pane-track');
     loreqa_buildFlowContent(fl, fr);
@@ -7484,6 +7485,15 @@ Compare every ledger record with the new messages. When a message ends, reverses
 - A character's inner thoughts shown by the narration or a status panel (a thought line next to their name, an emoji with a quoted thought) are not evidence that the character knows, says or decides anything. Only what happens and what is said in the story counts.
 - core: true only for what the writer must never contradict in any scene: identity and lineage, alive or dead, side or group, a relationship status (family, enmity, alliance, romance), and who knows the player character's identity or a central secret. Everything else false.
 - Write every field in story_language (the language of the story's messages), not in the language of these instructions, of the persona or of anyone reading the ledger. The [bracketed] names above are placeholders, never copy them.` } },
+    ledgerCheck: { label: '분기 기록 점검', ph: ['source', 'position'],
+        locked: '뒤에 JSON 형식(flags: id · kind · with · reason)이 자동으로 붙음. 점검은 표시만 하고 기록을 바꾸지 않음',
+        def: { en: `You check the divergence ledger of a fan story based on "{{source}}" (the story is now at: {{position}}). Each record is a state that differs from the original and that the story's writer relies on. Find the records the writer should look at again:
+- outdated: a newer record or the recent story shows it no longer holds or was settled (a promise kept or broken, an item used up, lost or handed over, a plan carried out, a suspicion now confirmed or disproved, a group she left, a relationship that changed since).
+- conflict: it contradicts another record about the same person or thing; give the other id in "with".
+- unsupported: its text claims more than its quotes show (a guessed reason, motive, title, relation or who knows what), or it is about people, places or plans the story invented rather than the original's.
+- minor: not worth a lasting record (a passing remark, a mood, a meal, one day's errand).
+Check every promise, deal, plan and pending item against the other records: when another record shows the thing was given, made, done or abandoned, the promise or plan is outdated ("with" = that record).
+Flag only clear problems; most records are fine. Never flag a record only because it is old, and never flag a record marked manual as unsupported.` } },
     tidy: { label: '분기 장부 정리', ph: ['source', 'position'],
         locked: '뒤에 기록 번호 규칙과 JSON 출력 형식(merge / drop / core)이 자동으로 붙음. 결과에 안 나온 기록은 그대로 남음',
         def: { en: `You tidy the divergence ledger of a story set in the world of "{{source}}". The story is now at: "{{position}}".
@@ -9367,6 +9377,57 @@ async function scoutLedgerTidyWork(ledger,scope,reason='auto',recentMessages=[])
     loreqa_stat('tidy.run');loreqa_stat('tidy.merged',merges.length);loreqa_stat('tidy.dropped',drops.length);loreqa_stat('tidy.cored',cored);loreqa_stat('tidy.recordsBefore',live.length);
     return {merged:merges.length,dropped:drops.length,cored};
 }
+// ── 기록 점검: 보조 모델이 낡음 · 충돌 · 근거 부족 · 사소함으로 보이는 기록에 표시만 한다 (기록은 바꾸지 않음) ──
+//   표시는 ledger.checks.flags[기록 id] 에 남고, 기록 내용이 바뀌면(sig 가 달라지면) 보이지 않는다
+const SCOUT_CHECK_LOCKED=`Each record has an "id" (r1, r2, ...), its source message numbers and up to two quotes from them. Go through the records one by one and give a verdict for EVERY id, in order. Return JSON only:
+{"checks":[{"id":"r1","note":"what later records or the story say about it, a few words","kind":"ok"},{"id":"r2","note":"...","kind":"outdated","with":"r7","reason":"one short sentence"}]}
+"note" comes first: for each record, look for later records about the same person or thing before deciding. "kind" is ok, outdated, conflict, unsupported or minor. "with" is the id of the record that settles or contradicts it, or "". Give "with" and "reason" only when kind is not ok. Write "note" and "reason" in {{language}}, naming people and things, never record ids. No Markdown, no explanation.`;
+const LOREQA_CHECK_KINDS={outdated:'낡음',conflict:'충돌',unsupported:'근거 부족',minor:'사소함'};
+const loreqa_checkSig=e=>scoutHash(JSON.stringify([e.entity,e.dimension,e.after]));
+function loreqa_checkFlag(ledger,e){const f=ledger?.checks?.flags?.[e.id];return f&&f.sig===loreqa_checkSig(e)?f:null;}
+// 금방 끝나는 칸(몸 상태 · 약속)이 오래 그대로인지 (동행 · 거처는 오래 같아도 정상이라 뺀다): 읽은 메시지 수 - 마지막 근거 위치 (턴 = 메시지 2개)
+function loreqa_staleTurns(ledger,e){
+    const lim=Number(loreqa_cfg.ledgerStaleTurns)||0;if(!lim||!['condition','promises'].includes(loreqa_slotOf(e)))return 0;
+    const idx=Math.max(-1,...(e.evidence||[]).map(v=>Number(v.index)||0));if(idx<0)return 0;
+    const turns=Math.floor(((ledger.hashes||[]).length-1-idx)/2);return turns>=lim?turns:0;
+}
+async function scoutLedgerCheck(scope){
+    return scoutLedgerSerial(async()=>{
+        const snap=await scoutSnapshot();if(snap.scope!==scope)throw Error('채팅이 바뀌었습니다.');
+        const ledger=await scoutLedgerLoad(scope);
+        const live=ledger.events.filter(e=>!ledger.excluded.includes(e.id));
+        if(!live.length)return {flagged:0,checked:0};
+        const idOf=new Map(),evOf=new Map();
+        live.forEach((e,i)=>{const r='r'+(i+1);idOf.set(e.id,r);evOf.set(r,e);});
+        let position='';try{position=(await loreqa_posLoad(scope))?.cur?.label||'';}catch(_){}
+        const records=live.map(e=>({id:idOf.get(e.id),...(loreqa_slotOf(e)?{slot:e.slot}:{}),entity:e.entity,dimension:e.dimension,change:e.change,after:e.after,source_messages:(e.evidence||[]).map(v=>v.index),quotes:(e.evidence||[]).slice(0,2).map(v=>String(v.quote||'').slice(0,200)),...(e.manual?{manual:true}:{})}));
+        const system=loreqa_prompt('ledgerCheck',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_CHECK_LOCKED.replace('{{language}}',loreqa_cfg.language||'한국어');
+        const [bt,bp]=loreqa_branchApi();
+        const started=Date.now();
+        const response=await loreqa_callLLM([{role:'system',content:system},{role:'user',content:JSON.stringify({work:loreqa_cfg.source,current_point:position||'unknown',records,recent_story_messages:scoutTidyRecent(scoutCompleted(snap))})}],false,bt,bp,false,false,{ledgerJson:true,outputBudget:16384,silent:true,pdf:Number(loreqa_cfg.branchPdf)===1,step:'기록 점검'});
+        const entry={time:new Date().toISOString(),phase:'check',records:records.length,elapsedMs:Date.now()-started,...(response?.diagnostic||{}),usage:response?.usage||null,response:scoutLedgerLogText(response?.text||''),status:'응답 수신'};
+        scoutLedgerLogAdd(scope,entry);
+        if(!response?.text){entry.status='API 요청 실패';throw Error('기록 점검 실패: '+(loreqa_state.lastError||'빈 응답'));}
+        let v;
+        {let t=String(response.text).replace(/<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi,'').replace(/^```(?:json)?\s*|\s*```$/g,'').trim();
+         const a=t.indexOf('{'),b=t.lastIndexOf('}');
+         try{v=JSON.parse(a>=0&&b>a?t.slice(a,b+1):t);}catch(e){entry.status='JSON 오류';throw Error('기록 점검 응답 JSON 오류. 표시를 바꾸지 않았습니다.');}}
+        const flags={};
+        for(const f of (Array.isArray(v?.checks)?v.checks:Array.isArray(v?.flags)?v.flags:[])){
+            const e=evOf.get(f?.id);if(!e||flags[e.id]||!LOREQA_CHECK_KINDS[f?.kind])continue;
+            if(f.kind==='unsupported'&&e.manual)continue;
+            const w=evOf.get(f?.with);
+            flags[e.id]={kind:f.kind,reason:typeof f.reason==='string'?f.reason.trim().slice(0,200):'',with:w&&w!==e?w.entity+' · '+w.dimension:'',sig:loreqa_checkSig(e)};
+        }
+        ledger.checks={time:new Date().toISOString(),checked:live.length,flags};
+        await scoutLedgerSave(ledger);
+        const n=Object.keys(flags).length;
+        entry.status=`점검 완료: ${live.length}건 중 ${n}건 표시`;
+        loreqa_stat('check.run');loreqa_stat('check.flagged',n);loreqa_stat('check.records',live.length);
+        for(const f of Object.values(flags))loreqa_stat('check.'+f.kind);
+        return {flagged:n,checked:live.length};
+    });
+}
 async function scoutLedgerTidy(scope,reason='manual'){
     return scoutLedgerSerial(async()=>{
         const snap=await scoutSnapshot();if(snap.scope!==scope)throw Error('채팅이 바뀌었습니다.');
@@ -9605,7 +9666,9 @@ async function scoutLedgerPanel(){
         unkeep.onclick=async()=>{unkeep.disabled=true;try{await scoutLedgerSerial(async()=>{const l=await scoutLedgerLoad(scope);delete l.startAt;await scoutLedgerSave(l);});scoutLedgerStatus.set(scope,'시작 위치를 해제했습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{unkeep.disabled=false;}};
         const fromRow=document.createElement('div');fromRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';fromRow.append(from,go,unkeep,fromInfo);
         const fl=document.createElement('span');fl.textContent='시작 위치';fl.style.cssText='font-size:11px;color:#a6adc8;white-space:nowrap';bar.append(fl,fromRow);
-        group('정리',[tidy,undo]);
+        const check=document.createElement('button');check.textContent='기록 점검';check.title='보조 모델이 장부 전체를 보고 낡음 · 충돌 · 근거 부족 · 사소함으로 보이는 기록에 ⚠ 표시만 합니다. 기록은 바꾸지 않습니다. 고치거나 제외하면 표시가 사라집니다. API 요청 1회.';
+        check.onclick=async()=>{check.disabled=true;status.textContent='기록 점검 중…';try{const r=await scoutLedgerCheck(scope);scoutLedgerStatus.set(scope,r.checked?`점검 완료: ${r.checked}건 중 ${r.flagged}건에 ⚠ 표시. 각 기록을 열어 이유를 보고 고치거나 제외하세요.`:'점검할 기록이 없습니다.');await scoutLedgerPanel();}catch(e){status.textContent=String(e.message||e);}finally{check.disabled=false;}};
+        group('정리',[tidy,undo,check]);
         const expBtn=document.createElement('button');expBtn.textContent='JSON 내보내기';expBtn.title='이 채팅의 분기 기록 전체(근거·제외 표시 포함)를 JSON 파일로 저장합니다.';
         expBtn.onclick=async()=>{try{const data=await loreqa_ledgerExport(scope);loreqa_downloadJson(`loreqa-ledger-${loreqa_fileSafe(snap.chat?.name||snap.char?.name)}.json`,data);status.textContent=`분기 기록 ${data.events.length}개를 JSON 파일로 내보냈습니다. 브라우저 다운로드 폴더를 확인하세요.`;}catch(e){status.textContent=String(e.message||e);}};
         const impBtn=(label,replace)=>{const b=document.createElement('button');b.textContent=label;
@@ -9655,6 +9718,9 @@ async function scoutLedgerPanel(){
         const row=document.createElement('details'),summary=document.createElement('summary');
         summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(loreqa_slotOf(event)?`[${LOREQA_PC_SLOTS[event.slot].ko}] `:'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
         if(excluded)summary.classList.add('loreqa-excluded');
+        {const cf=excluded?null:loreqa_checkFlag(ledger,event),st=excluded?0:loreqa_staleTurns(ledger,event);
+         if(cf||st){summary.prepend(cf?'⚠ ':'⏳ ');const t=document.createElement('div');t.style.cssText='font-size:11px;margin:2px 0 0 14px;white-space:normal;color:'+(cf?'#f9e2af':'#a6adc8');
+           t.textContent=(cf?`⚠ 점검(${LOREQA_CHECK_KINDS[cf.kind]}): ${cf.reason}${cf.with?` — 관련: ${cf.with}`:''}`:'')+(cf&&st?' · ':'')+(st?`⏳ ${st}턴 동안 새 근거 없음 — 아직 맞는지 확인`:'');summary.appendChild(t);}}
         {const tr=loreqa_ledgerTr.get(event.id);if(tr&&tr.src===loreqa_ledgerTrSrc(event)){const t=document.createElement('div');t.textContent='↳ '+tr.t;t.style.cssText='font-size:11px;color:#a6adc8;margin:2px 0 0 14px;white-space:normal';summary.appendChild(t);}}
         row.appendChild(summary);
         const fields={};
@@ -10310,6 +10376,7 @@ function loreqa_buildBranchContent(left,right){
     loreqa_trkNum(secMore,'자동 읽기 간격 (턴)','ledgerEvery',1,1,'응답 뒤 분기 장부를 몇 턴마다 읽을지. 1이면 매 턴, 3이면 안 읽은 대화가 3턴 쌓였을 때 한꺼번에. 전체 읽기 버튼은 간격과 상관없이 바로 읽음');
     loreqa_trkNum(secMore,'한 묶음 턴 수','ledgerBatchTurns',2,1,'한 번 요청에 새로 읽는 턴 수 (사용자 메시지+응답 = 1턴). 앞 묶음의 마지막 1턴은 맥락으로 함께 보냄');
     loreqa_trkNum(secMore,'한 묶음 글자 수 상한','ledgerBatchChars',0,0,'0이면 없음(턴 수로만 묶음). 숫자를 넣으면 턴 수를 다 채우기 전이라도 이 글자 수에 닿는 턴에서 끊음. 응답이 아주 긴 채팅에서 놓침을 줄일 때만');
+    loreqa_trkNum(secMore,'오래된 기록 표시 (턴)','ledgerStaleTurns',40,0,'몸 상태·약속 기록이 이 턴 수 넘게 새 근거 없이 그대로면 분기 기록 창에 ⏳ 로 표시 (아직 맞는지 확인용, 기록은 바꾸지 않음). 0이면 끔');
     loreqa_trkNum(secMore,'장부 자동 정리','ledgerTidyEvery',20,0,'새 기록이 이 수만큼 쌓일 때마다 보조 모델이 중복 합치기·낡은 기록 지우기·★ 재판정. 0이면 끔 (지금 정리 버튼은 언제든 가능). 원클릭 세팅 계산기로도 정함');
     loreqa_trkNum(secMore,'고정 변경 기록 글자 수','fixedChars',3000,0,'고정 변경 기록을 이만큼까지 주입. 넘는 뒷부분은 안 들어감. 0이면 제한 없음');
     loreqa_trkNum(secMore,'함께한 원작 사건 글자 수','pcEventsChars',4000,0,'주인공 칸 "함께한 원작 사건" 목록 길이. 새 사건은 뒤에 붙고, 넘으면 오래된 줄부터 빠짐. 0이면 제한 없음');
