@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.4.9
+//@version 3.4.10
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.4.9';
+const LOREQA_VER = '3.4.10';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -3423,7 +3423,7 @@ function loreqa_buildTabs(p) {
     loreqa_fillAdvancedSections(instr);
     onlySec.appendChild(loreqa_createRow('사용 맥락 안내', loreqa_createToggle('loreqa-s-useContext', Number(loreqa_cfg.useContext ?? 1) === 1, async v => { loreqa_cfg.useContext = v ? 1 : 0; loreqa_cache = null; loreqa_modeCaches = {}; await loreqa_saveConfig(); }),
         '모든 보조 모델 호출 앞에 "비상업적 AU·OC 중심 팬 롤플레이, 원작 복제 목적 아님, 인용은 짧게"를 밝힘. 문구는 아래 프롬프트 편집에서 수정'));
-    instr.appendChild(loreqa_promptSection(['useContext', 'verify', 'qaRef', 'qaDoubt', 'augRepeat', 'augDiverge', 'augPos', 'augGuard', 'augQuiet', 'augVerify']));
+    instr.appendChild(loreqa_promptSection(['useContext', 'verify', 'qaRef', 'qaDoubt', 'augRepeat', 'augDiverge', 'augPos', 'augGuard', 'augQuiet', 'augVerify', 'translate']));
     panes.instr.pane.appendChild(instr);
     // 원클릭 세팅
     cols('quick', [loreqa_buildQuickFame(), loreqa_buildQuickStats()], [loreqa_buildQuickEnv()]);
@@ -3554,7 +3554,7 @@ async function loreqa_renderStatus() {
         const d = loreqa_el('details'); d.open = !b?.secrets;
         d.appendChild(loreqa_el('summary', '', b?.secrets && b.guardV === LOREQA_GUARD_V ? '시점 가드 — 지금 존재하는 비밀과 모르는 인물 (수정 가능)' : '시점 가드 — 다음 요청 때 생성됩니다'));
         const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '120px'; area.value = b?.secrets || '';
-        d.append(area,
+        d.append(area, loreqa_trBox(() => area.value),
             loreqa_btn('저장', async () => { const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label); bk.secrets = area.value.trim(); bk.guardV = LOREQA_GUARD_V; await loreqa_posSave(snap.scope, s2); }),
             loreqa_btn('다시 생성', async e => {
                 e.target.disabled = true;
@@ -3571,7 +3571,7 @@ async function loreqa_renderStatus() {
         const d = loreqa_el('details'); d.open = !b?.guide;
         d.appendChild(loreqa_el('summary', '', b?.guide ? '서사 가이드 — 다음 원작 사건 (수정 가능)' : '서사 가이드 — 다음 요청 때 생성됩니다'));
         const area = loreqa_el('textarea', 'loreqa-area'); area.style.minHeight = '120px'; area.value = b?.guide || '';
-        d.append(area,
+        d.append(area, loreqa_trBox(() => area.value),
             loreqa_btn('저장', async () => { const s2 = await loreqa_posLoad(snap.scope); const bk = loreqa_posBucket(s2, st.cur.key, st.cur.label); bk.guide = area.value.trim(); bk.guideV = LOREQA_GUIDE_V; bk.guideN = Number(loreqa_cfg.guideCount) || 3; bk.guideDivN = -2; await loreqa_posSave(snap.scope, s2); }),
             loreqa_btn('다시 생성', async e => {
                 e.target.disabled = true;
@@ -3609,7 +3609,7 @@ async function loreqa_renderStatus() {
             info.textContent = parts.join('\n\n');
         }
         const say = m => { loreqa_posMsg = m; loreqa_renderStatus(); };
-        d.append(area, info,
+        d.append(area, loreqa_trBox(() => area.value), info,
             loreqa_btn('저장', async () => {
                 const p = loreqa_parseWorld(area.value);
                 if (!p.pub.length && !p.hidden.length && !p.beats.length) { say('✗ [PUBLIC] / [HIDDEN] / [BEATS] 아래에 "- " 로 시작하는 줄이 없습니다.'); return; }
@@ -3650,6 +3650,35 @@ async function loreqa_renderStatus() {
     }
     if (st.cur) loreqa_renderAltPreview(card, snap, st);
 }
+// ── 보기용 한국어 번역: 버튼을 눌렀을 때만 전개모드 API로 번역해 아래에 보여 준다. 저장 · 주입하지 않고 메모리에만 둔다 ──
+const loreqa_trCache = new Map(); // 원문 → 번역
+async function loreqa_translate(text, extra = '') {
+    const [bt, bp] = loreqa_flowApi();
+    const out = await loreqa_callLLM([{ role: 'system', content: loreqa_prompt('translate', { source: loreqa_cfg.source || '' }, false) + extra }, { role: 'user', content: text }], false, bt, bp, false, false, { silent: true, step: '번역' });
+    loreqa_stat('translate');
+    return String(typeof out === 'string' ? out : (out?.text ?? '')).trim();
+}
+// getText: 누른 순간의 원문 (고친 내용도 그대로 번역)
+function loreqa_trBox(getText) {
+    const wrap = loreqa_el('div'); wrap.style.marginTop = '4px';
+    const out = loreqa_el('pre', 'loreqa-pre');
+    const show = t => { out.textContent = t || ''; out.style.display = t ? '' : 'none'; };
+    const cached = loreqa_trCache.get(String(getText() || '').trim());
+    show(cached);
+    const b = loreqa_btn(cached ? '번역 다시' : '한국어로 번역', async () => {
+        const src = String(getText() || '').trim();
+        if (!src) { show('(번역할 내용이 없습니다)'); return; }
+        b.disabled = true; show('번역 중…');
+        let t = '';
+        try { t = await loreqa_translate(src); } catch (e) {}
+        if (t) loreqa_trCache.set(src, t);
+        show(t || '✗ 번역 실패: ' + (loreqa_state?.lastError || '빈 응답'));
+        b.disabled = false; b.textContent = '번역 다시';
+        if (!wrap.isConnected && t) loreqa_renderStatus(); // 기다리는 사이 창이 다시 그려졌으면 새 칸에 보여 준다
+    });
+    b.title = '보기용 번역. 저장하지 않고 모델에 넣지 않습니다. 전개모드 API로 1회 호출. 프롬프트는 지침·자료 탭에서 고칠 수 있음';
+    wrap.append(b, out); return wrap;
+}
 // 실험: 같은 위치 · 같은 분기 기록으로 다른 전개 방식(비트 ↔ 목록)을 만들어 보여 주기만 한다. 저장 · 주입하지 않는다.
 //   결과는 창을 다시 그려도 남도록 메모리에만 둔다 (위치가 바뀌면 지난 위치 결과라고 표시)
 let loreqa_altPreview = null;
@@ -3665,7 +3694,9 @@ function loreqa_renderAltPreview(card, snap, st) {
         const w = loreqa_el('div'); w.style.cssText = 'flex:1 1 300px;min-width:0';
         w.appendChild(loreqa_el('div', '', title));
         const a = loreqa_el('textarea', 'loreqa-area'); a.readOnly = true; a.style.minHeight = '260px'; a.value = text || '(없음)';
-        w.appendChild(a); return w;
+        w.appendChild(a);
+        if (text && !/^\(|^생성 중/.test(text)) w.appendChild(loreqa_trBox(() => text));
+        return w;
     };
     if (P) {
         const cur = style === 'beats' ? (b.world?.raw || '') : [b.secrets ? '[시점 가드]\n' + b.secrets : '', b.guide ? '[서사 가이드]\n' + b.guide : ''].filter(Boolean).join('\n\n');
@@ -7598,6 +7629,14 @@ Answer with exactly two words: the time word (FORWARD, BACK or NONE) and the sce
     useContext: { label: '사용 맥락 안내', ph: [], locked: '사용 맥락 안내를 켜 두면 모든 보조 모델 호출의 시스템 프롬프트 맨 앞에 붙음',
         def: { ko: '[사용 맥락] 이것은 개인이 비상업적으로 즐기는 팬메이드 롤플레이 보조 작업이다. 원작과 다른 AU이며, 원작에 없는 플레이어의 오리지널 캐릭터(OC)가 중심이다. 원작을 복제하거나 배포하려는 것이 아니다. 원작 인용은 캐릭터 말투를 참고하기 위한 한두 문장의 짧은 발췌로만 하고, 긴 본문을 이어서 옮기지 않는다. 나머지는 요약과 설명으로 쓴다.',
                en: '[Usage context] This is assistance for a private, non-commercial, fan-made roleplay. It is an alternate universe (AU) that differs from the original and centers on the player\'s original character (OC), who does not exist in the original. Nothing here aims to reproduce or distribute the original work. Quote the original only in brief excerpts of one or two sentences as characterization reference, never as long continuous passages; write everything else as summary and description.' } },
+    translate: { label: '보기용 한국어 번역', ph: ['source'],
+        locked: '위치 카드 · 분기 기록 창의 "한국어로 번역" 버튼에서만 씀. 번역문은 보여 주기만 하고 저장하거나 모델에 넣지 않음. 분기 기록을 번역할 때는 "[번호] 를 줄 앞에 그대로 두고 한 줄에 한 기록" 지시가 뒤에 자동으로 붙음',
+        def: { en: `Translate the text below into natural Korean. It is notes about the story world of "{{source}}", shown to a reader who reads Korean; it is for reading only.
+- Translate everything. Do not summarise, explain, add notes or drop lines.
+- Keep the layout: line breaks, "- " bullets, numbering, tags such as [NOW], [PUBLIC], [HIDDEN], [BEATS], chapter marks such as (Ch.12), and markers such as "| next:", "/ at:", "/ present:", "/ changed:", "/ then:", "known to", "[as canon]", "[changed]", "[impossible]" stay as they are.
+- Names of characters, places, items and techniques: use the usual Korean name from the work's official Korean release when there is one, and put the original name in parentheses at its first mention, e.g. 셋쇼마루(殺生丸).
+- Text already in Korean stays as it is.
+Output only the translation.` } },
     augVerify: { label: '2차 자동 규칙: 분기 존중', ph: [], locked: '분기 기록이 있을 때 2차 검증 지시 목록에 붙음',
         def: { ko: '- [이 이야기에서 확정된 변경]과 [사용자 고정 변경 기록]의 사실은 이야기에서 실제로 일어난 변화이므로 설정 오류로 지적하거나 원작대로 되돌리지 말 것.',
                en: '- Facts in [Confirmed Changes in This Story] and [User Fixed Records] are changes that actually happened in the story; do not flag them as setting errors or revert them to canon.' } },
@@ -9469,6 +9508,23 @@ async function loreqa_ledgerImport(scope, data, replace) {
     });
     return r;
 }
+// 분기 기록 번역 (보기용): 기록 id → {src, t}. 기록이 바뀌면 src 가 달라져 표시하지 않는다
+const loreqa_ledgerTr = new Map();
+const loreqa_ledgerTrSrc = e => [e.entity, e.dimension, e.after, e.change || ''].join(' · ').replace(/\s*\n\s*/g, ' // ');
+async function loreqa_ledgerTranslate(scope) {
+    const l = await scoutLedgerLoad(scope), list = [...l.events].reverse();
+    let done = 0, failed = 0;
+    for (let i = 0; i < list.length; i += 40) {
+        const part = list.slice(i, i + 40);
+        const text = part.map((e, k) => `[${k + 1}] ${e.entity} · ${e.dimension} · ${e.after}${e.change ? ' (' + e.change + ')' : ''}`.replace(/\s*\n\s*/g, ' // ')).join('\n');
+        let out = '';
+        try { out = await loreqa_translate(text, '\n\nThe input is a numbered list of records, one per line. Output one line per record in the same order, each starting with its [number] exactly as given. Keep " · " separators and " // " as they are.'); } catch (e) {}
+        const got = new Map();
+        for (const line of out.split('\n')) { const m = line.match(/^\s*\[(\d+)\]\s*(.+)$/); if (m) got.set(Number(m[1]), m[2].trim()); }
+        part.forEach((e, k) => { const t = got.get(k + 1); if (t) { loreqa_ledgerTr.set(e.id, { src: loreqa_ledgerTrSrc(e), t }); done++; } else failed++; });
+    }
+    return { done, failed };
+}
 async function scoutLedgerPanel(){
     const snap=await scoutSnapshot(),scope=scoutLedgerScope(snap);const root=document.getElementById('canon-scout-ledger-host');if(!root)return;
     document.getElementById('canon-scout-ledger-ui')?.remove();const box=document.createElement('section');box.id='canon-scout-ledger-ui';root.appendChild(box);
@@ -9519,7 +9575,9 @@ async function scoutLedgerPanel(){
                 loreqa_pickJson(async data=>{const r=await loreqa_ledgerImport(scope,data,replace);scoutLedgerStatus.set(scope,`JSON에서 ${r.added}개 가져옴 (근거 확인 ${r.withEvidence} · 근거 없이 직접 기록으로 ${r.asManual} · 건너뜀 ${r.skipped})`+(r.fileRead<0?' · 이 파일에는 읽은 위치가 없어 그대로 둠 (새 버전에서 다시 내보내거나, 시작 위치로 직접 옮길 수 있음)':r.readTo!==r.readFrom?` · 읽은 위치 ${r.readFrom} → ${r.readTo}`:` · 읽은 위치 그대로 ${r.readFrom} (파일은 ${r.fileRead}개까지 읽음, 이 채팅과 앞에서부터 같은 메시지는 ${r.matched}개`+(r.matched<r.fileRead?`. ${r.matched}번 메시지부터 내용이 달라 그 뒤는 인정 안 함`:'')+')'));await scoutLedgerPanel();},msg=>{status.textContent=msg;});};
             return b;};
         group('JSON',[expBtn,impBtn('가져오기 (합치기)',false),impBtn('가져오기 (바꾸기)',true)]);
-        group('기타',[logBtn]);
+        const trBtn=document.createElement('button');trBtn.textContent=loreqa_ledgerTr.size?'한국어로 번역 (다시)':'한국어로 번역';trBtn.title='모든 기록을 한국어로 번역해 각 기록 아래에 한 줄씩 보여 줍니다. 보기용: 저장하지 않고 모델에 넣지 않습니다. 기록 40개마다 전개모드 API 1회 호출. 프롬프트는 지침·자료 탭에서 고칠 수 있음';
+        trBtn.onclick=async()=>{trBtn.disabled=true;status.textContent='번역 중…';try{const r=await loreqa_ledgerTranslate(scope);status.textContent=`번역 완료: ${r.done}개`+(r.failed?` · 실패 ${r.failed}개 (${loreqa_state?.lastError||'빈 응답'})`:'')+' — 보기용이며 저장되지 않습니다.';await scoutLedgerPanel();}catch(e){status.textContent='✗ 번역 실패: '+String(e.message||e);}finally{trBtn.disabled=false;}};
+        group('기타',[logBtn,trBtn]);
         status.after(bar);
         if(logPane)bar.after(logPane);
     }
@@ -9558,6 +9616,7 @@ async function scoutLedgerPanel(){
         const row=document.createElement('details'),summary=document.createElement('summary');
         summary.textContent=(excluded?'[제외] ':'')+(event.core?'★ ':'')+(scoutLocked(event)?'🔒 ':'')+(loreqa_slotOf(event)?`[${LOREQA_PC_SLOTS[event.slot].ko}] `:'')+(event.manual?'[직접] ':event.edited?'[수정됨] ':'')+event.entity+' · '+event.dimension+' · '+event.after;
         if(excluded)summary.classList.add('loreqa-excluded');
+        {const tr=loreqa_ledgerTr.get(event.id);if(tr&&tr.src===loreqa_ledgerTrSrc(event)){const t=document.createElement('div');t.textContent='↳ '+tr.t;t.style.cssText='font-size:11px;color:#a6adc8;margin:2px 0 0 14px;white-space:normal';summary.appendChild(t);}}
         row.appendChild(summary);
         const fields={};
         const field=(key,label,multi)=>{

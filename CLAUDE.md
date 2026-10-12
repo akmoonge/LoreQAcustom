@@ -178,6 +178,9 @@ comments are Korean.
   (READY / SECRETS / ONSCREEN). A harness A/B (testdata/harness/gen.js) showed no pull-in either way.
 - 실험 미리보기 (`loreqa_renderAltPreview`, 3.4.9): the position card builds the other style (beats ↔ list) for the same
   position + ledger and shows it next to the current one; memory only (`loreqa_altPreview`), never saved or injected.
+- 보기용 번역 (3.4.10): "한국어로 번역" buttons (`loreqa_trBox`) under the world table, guard / guide lists and the
+  preview; the ledger window translates all records (`loreqa_ledgerTranslate`, 40 per call, `[n]` lines) and shows one
+  line under each. Editable prompt `translate`, 전개모드 API, memory only (`loreqa_trCache`, `loreqa_ledgerTr`), never injected.
 - World table prompt (3.3.1): all content rules (source/search, NOW, BEATS, PUBLIC, HIDDEN) are in the editable
   `world` prompt in numbered sections; the locked `LOREQA_WORLD_FORMAT` is only the four-tag line format.
 - 시점 가드 + 서사 가이드 = one 세계 상태표 per position (`loreqa_generateWorld`, prompt `world`,
