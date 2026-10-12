@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.8.0
+//@version 3.8.1
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.8.0';
+const LOREQA_VER = '3.8.1';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -8955,6 +8955,7 @@ function scoutLedgerExtractRule(){
 let scoutBusy = null;
 let scoutCache = null;
 let scoutReport = '아직 조회하지 않았습니다. 작품명과 API를 설정한 뒤 현재 상황 조회를 누르세요.';
+let scoutReportScope = ''; // scoutReport 가 어느 채팅의 브리핑인지 (채팅을 바꾸면 그 채팅의 저장된 브리핑을 보여 줌)
 function scoutClean(text) {
     return String(text || '').replace(/<!--\s*HAYAKU_STATE_PACKET_START[\s\S]*?HAYAKU_STATE_PACKET_END\s*-->/g, '')
       .replace(/┣\s*observation:[\s\S]*?┫/g, '').replace(/<!-- RISUPOT_[\s\S]*?-->/g, '');
@@ -9207,7 +9208,9 @@ async function scoutRun(force=false) {
         const pending=ledger.hashes.length<scoutCompleted(snap).length;
         const ledgerNotice=pending?'※ 중대 분기 기록은 일부 미완료입니다. 일반 조회는 저장된 기록과 제공된 대화로 진행했습니다. 중대 분기 기록에서 이어서 읽기를 시도할 수 있습니다.\n\n':'';
         const display='[원작 사전정보 · 메인 모델 참고용 / 전개 강제·인물 지식 자동 부여 없음]\n\n'+ledgerNotice+report+(jumps?'\n\n### '+(loreqa_isKO(scoutBriefLang())?'타임 점프 후보 (선택지 · 주입 안 됨)':'Time jump options (choices, not injected)')+'\n'+jumps:'');
-        scoutCache={key:snap.key,extraKey,text:display,reference:report};scoutShow(display);
+        scoutCache={key:snap.key,extraKey,text:display,reference:report};scoutShow(display);scoutReportScope=snap.scope;
+        // 마지막 브리핑은 채팅마다 위치 저장소에 남긴다 (전에는 메모리에만 있어 앱을 끄면 사라졌다)
+        try{const st=await loreqa_posLoad(snap.scope);st.brief={text:display,time:new Date().toISOString()};await loreqa_posSave(snap.scope,st);}catch(_){}
       }catch(error){scoutCache=null;scoutShow('사전정보 조회 실패: '+String(error?.message||error));}
     })();
     scoutBusy=work;
@@ -10552,6 +10555,13 @@ function loreqa_buildFlowContent(left,right){
     loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
     loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
+    // 이 채팅의 저장된 브리핑을 불러온다 (앱을 다시 켰거나 채팅을 바꾼 경우)
+    (async()=>{try{const snap=await scoutSnapshot();if(scoutReportScope===snap.scope)return;const st=await loreqa_posLoad(snap.scope);
+        if(st.brief?.text){scoutReport=st.brief.text;pre.textContent=`(저장된 브리핑 · ${String(st.brief.time||'').slice(0,16).replace('T',' ')})
+
+`+st.brief.text;}
+        else{scoutReport='이 채팅에서는 아직 브리핑을 만들지 않았습니다. 브리핑 생성을 누르세요.';pre.textContent=scoutReport;}
+        scoutReportScope=snap.scope;}catch(_){}})();
     pre.style.minHeight='120px';
     // 위치 카드(세계 상태표) 바로 아래: 같이 보며 비교하는 칸이라 왼쪽으로 옮김. 번역은 보기용
     briefSec.append(briefBtns,briefMore,pre,loreqa_trBox(()=>/^(아직 조회하지|현재 장면과 과거)/.test(scoutReport||'')?'':scoutReport));left.insertBefore(briefSec,qaSec);
