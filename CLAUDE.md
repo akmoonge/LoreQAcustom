@@ -59,7 +59,9 @@ comments are Korean.
   current → computed, 적용 writes them). Separate token budgets per use (인물 4k / 세계관 6k /
   위치 10k / 분기 묶음 6k, max 3 turns: bigger batches missed and blurred records); ledger read interval = min(batch, remembered turns / 3, helper window
   + maxGap 2), chosen from a 10-environment simulation. All ratios and tiers are guesses until
-  usage data.
+  usage data, except two measured in 3.7.6 (harness, two works x 2 runs): ledger batch 1/2/3/4 turns -> recall about
+  equal for 1-3 (1 turn costs 2x), 4 adds junk, so the 6000-token / 1-3 turn rule stays; position judge 2/3/5/8 turns ->
+  no accuracy gain past 3 (5-8 gave some wild jumps), so posTokens 10000 -> 6000 and the range 3-8 -> 3-5.
 - 진행 상황 창: `loreqa_callLLM` is now a thin wrapper that records each helper call (step name
   from `requestOptions.step`, else inferred) and calls `loreqa_callLLMRaw`. Cards are drawn into
   Risu's main page via `risuai.getRootDocument()` (`.loreqa-float`, fixed, pointer-events none),

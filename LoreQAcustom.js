@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.7.5
+//@version 3.7.6
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.7.5';
+const LOREQA_VER = '3.7.6';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -563,7 +563,7 @@ const LOREQA_ENV_RULE = {
     maxGap: 2,           // 분기 기록에도 없고 인물·세계관 Q&A 대화 창에도 없는 턴을 이만큼까지만 허용
     charTokens: 4000,    // 인물모드 1차 질의가 읽을 대화량 (매 턴 호출이라 짧게: 지금 장면이면 충분)
     setTokens: 6000,     // 세계관모드 1차 질의가 읽을 대화량
-    posTokens: 10000,    // 위치 판정이 읽을 대화량 (몇 턴에 한 번이라 넉넉하게: 흩어진 시점 단서)
+    posTokens: 6000,     // 위치 판정이 읽을 대화량. 2·3·5·8턴 시험(두 작품 × 2회)에서 3턴이면 8턴과 같았고 5–8턴에서 오히려 크게 빗나간 판정이 나왔다
     sceneTokens: 8000,   // 장면 판단이 읽을 대화량 (장면이 바뀔 때만: 누가 어디 있는지 알 만큼)
     batchTokens: 6000,   // 분기 추출 한 묶음에 보낼 대화량 (묶음이 크면 놓치고 기록이 섞인다: 응답 2천 토큰이면 2턴)
     mainDivShare: 0.05,  // 메인 분기 블록이 쓸 컨텍스트 몫
@@ -575,7 +575,7 @@ const LOREQA_ENV_RULE = {
 const LOREQA_ENV_RULE_UI = [
     ['charTokens', '인물모드 읽을 대화량 (토큰)', '매 턴 도는 호출. 줄이면 싸지고, 늘리면 장면을 더 길게 봄'],
     ['setTokens', '세계관모드 읽을 대화량 (토큰)', ''],
-    ['posTokens', '위치 판정 읽을 대화량 (토큰)', '몇 턴에 한 번 돌아서 넉넉해도 부담이 적음'],
+    ['posTokens', '위치 판정 읽을 대화량 (토큰)', '시험에서 3턴이면 8턴과 정확도가 같았음. 늘려도 나아지지 않음'],
     ['sceneTokens', '장면 판단 읽을 대화량 (토큰)', '장면이 바뀔 때만 돎. 지금 누가 어디 있는지 알 만큼'],
     ['batchTokens', '분기 한 묶음 대화량 (토큰)', '크면 요청 수가 줄고, 작으면 꼼꼼히 읽음'],
     ['maxGap', '공백 허용 턴', '분기 기록에도 Q&A 대화 창에도 없는 턴을 몇 턴까지 허용할지'],
@@ -606,7 +606,7 @@ function loreqa_envCalc(p, R = loreqa_envRule()) {
     if (room < turn) throw Error(`대화가 들어갈 자리가 거의 없습니다 (약 ${Math.max(0, Math.round(room))}토큰). 고정 프롬프트나 응답 길이에 비해 컨텍스트가 작습니다.`);
     const remember = Math.max(1, Math.floor(room / turn));
     const charLogs = clamp(R.charTokens / turn, 2, 6), setLogs = clamp(R.setTokens / turn, 2, 6);
-    const posTurns = clamp(R.posTokens / turn, 3, 8), batch = clamp(R.batchTokens / turn, 1, 3);
+    const posTurns = clamp(R.posTokens / turn, 3, 5), batch = clamp(R.batchTokens / turn, 1, 3);
     return {
         remember, room: Math.round(room), promptGiven: prompt > 0,
         values: {
