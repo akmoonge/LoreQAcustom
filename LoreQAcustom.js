@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.7.7
+//@version 3.7.8
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.7.7';
+const LOREQA_VER = '3.7.8';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -9454,7 +9454,7 @@ async function scoutLedgerCheck(scope){
         live.forEach((e,i)=>{const r='r'+(i+1);idOf.set(e.id,r);evOf.set(r,e);});
         let position='';try{position=(await loreqa_posLoad(scope))?.cur?.label||'';}catch(_){}
         const records=live.map(e=>({id:idOf.get(e.id),...(loreqa_slotOf(e)?{slot:e.slot}:{}),entity:e.entity,dimension:e.dimension,change:e.change,after:e.after,source_messages:(e.evidence||[]).map(v=>v.index),quotes:(e.evidence||[]).slice(0,2).map(v=>String(v.quote||'').slice(0,200)),...(e.manual?{manual:true}:{})}));
-        const system=loreqa_prompt('ledgerCheck',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_CHECK_LOCKED.replace('{{language}}',loreqa_cfg.language||'한국어');
+        const system=loreqa_prompt('ledgerCheck',{source:loreqa_cfg.source,position:position||'unknown'},false)+'\n'+SCOUT_CHECK_LOCKED.replace('{{language}}',scoutBriefLang());
         const [bt,bp]=loreqa_branchApi();
         const started=Date.now();
         const response=await loreqa_callLLM([{role:'system',content:system},{role:'user',content:JSON.stringify({work:loreqa_cfg.source,current_point:position||'unknown',records,recent_story_messages:scoutTidyRecent(scoutCompleted(snap))})}],false,bt,bp,false,false,{ledgerJson:true,outputBudget:16384,silent:true,pdf:Number(loreqa_cfg.branchPdf)===1,step:'기록 점검'});
@@ -10521,7 +10521,7 @@ function loreqa_buildFlowContent(left,right){
     briefBtns.appendChild(briefBtn);
     const briefMore=document.createElement('details');briefMore.className='loreqa-fold';briefMore.style.marginTop='6px';
     {const sm=document.createElement('summary');sm.className='loreqa-section-title';sm.textContent='세부 설정';briefMore.appendChild(sm);}
-    briefMore.appendChild(loreqa_createRow('브리핑 언어',loreqa_createSelect('loreqa-brief-lang',[{value:'한국어',label:'한국어 (기본)'},{value:'output',label:'출력 언어 따라가기'},{value:'English',label:'English'},{value:'日本語',label:'日本語'},{value:'中文',label:'中文'}],String(loreqa_cfg.briefLang??'한국어'),async v=>{loreqa_cfg.briefLang=v;await loreqa_saveConfig();}),'브리핑과 타임 점프 후보를 쓸 언어. 브리핑은 메인 모델에 들어가지 않으므로 읽기 편한 언어로. 출력 언어(Q&A 주입 언어)를 이야기 언어로 맞춰 둔 경우에도 이 값을 따름'));
+    briefMore.appendChild(loreqa_createRow('브리핑 언어',loreqa_createSelect('loreqa-brief-lang',[{value:'한국어',label:'한국어 (기본)'},{value:'output',label:'출력 언어 따라가기'},{value:'English',label:'English'},{value:'日本語',label:'日本語'},{value:'中文',label:'中文'}],String(loreqa_cfg.briefLang??'한국어'),async v=>{loreqa_cfg.briefLang=v;await loreqa_saveConfig();}),'브리핑 · 타임 점프 후보 · 분기 기록 점검 이유를 쓸 언어. 모두 메인 모델에 들어가지 않으므로 읽기 편한 언어로. 출력 언어(Q&A 주입 언어)를 이야기 언어로 맞춰 둔 경우에도 이 값을 따름'));
     loreqa_trkNum(briefMore,'브리핑 로어 개수','briefLoreN',8,0,'원작 브리핑에 넣는 일치 로어 수. 0이면 제한 없음');
     loreqa_trkNum(briefMore,'브리핑 로어 글자 수','briefLoreChars',1800,0,'로어 항목당 글자 수. 0이면 제한 없음');
     const pre=document.createElement('pre');pre.id='canon-scout-result';pre.className='loreqa-pre';pre.textContent=scoutReport||'';
