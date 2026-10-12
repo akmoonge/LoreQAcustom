@@ -1,11 +1,11 @@
 //@name LoreQAcustom
 //@display-name 원작견 통합판 (프로토타입)
-//@version 3.5.1
+//@version 3.5.2
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.5.1';
+const LOREQA_VER = '3.5.2';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -7506,6 +7506,7 @@ Evidence, in order of trust:
 - [BEATS] lists what comes next in THIS story's world, not the original's script, in the same line format.
 - For each upcoming original event, write how it would go here given confirmed_changes: the event part as it would now play out, "changed" how it differs from the original, "then" its likely outcome here. Keep "as canon" for events the changes do not touch.
 - When confirmed_changes give an original character or faction a reason to act (they learned something, lost or gained something, have a new ally or enemy), add a line starting with "(ripple)" instead of a chapter: what they would do next in response, with at / present / then like a beat. Every ripple must follow from a named confirmed_changes record; never invent a change.
+- Ripples are the main content: write one for every original character or faction whose relationship with the story's characters, knowledge or situation the confirmed_changes changed, up to the beat limit, before adapted events. Events "as canon" come last and only fill what is left.
 - Drop original events that the changes make pointless, or mark them broken.` } },
     world: { label: '세계 상태표 생성 (서사 가이드 · 시점 가드 재료)', ph: ['source', 'position', 'mediumRule', 'mediumName', 'count', 'beats', 'language'],
         locked: '뒤에 출력 형식([NOW] / [BEATS] / [PUBLIC] / [HIDDEN] 네 칸의 줄 모양과 표식)만 자동으로 붙음 (그대로 읽어서 나누므로 잠김). 이미 만든 표는 위치 카드의 다시 생성을 눌러야 바뀜',
@@ -8220,14 +8221,16 @@ async function loreqa_prepareTurn() {
             // 원작 결말(then:)은 원작 따라가기 · 원작 우선에서만 넣는다. 균형 이하에서 결말을 알려 주면 그쪽으로 끌려간다
             const withThen = stance === 'follow' || stance === 'canon';
             const show = x => { const b = (W?.beats || []).find(y => y.text === x); if (!b || withThen || !b.then) return x; return x.replace(/\s*\/\s*then\s*[:：].*?(?=\s*\(broken\b|$)/i, ''); };
-            if (Number(cfg.flowSceneGate ?? 1) === 0) t.beatsAll = (W?.beats || []).map(b => b.text).filter(live).map(show);
+            // 개변 쪽 묶음: 원작대로("as canon")인 비트는 넣지 않는다. 넣으면 메인 모델이 그 원작 사건을 그대로 따라간다 (3.5.0 시험: 개변 즐기기가 균형과 같았음)
+            const own = x => { if (loreqa_stanceGroup() !== 'change') return true; const b = (W?.beats || []).find(y => y.text === x); return !b || b.ripple || b.broken || !/^as canon\.?$/i.test(String(b.changed || '').trim()); };
+            if (Number(cfg.flowSceneGate ?? 1) === 0) t.beatsAll = (W?.beats || []).map(b => b.text).filter(live).filter(own).map(show);
             // 원작 쪽 묶음: 아직 안 일어난 첫 비트를 다음 이정표로 따로 넣는다 (경로가 붙어 있음)
             t.stanceGroup = loreqa_stanceGroup();
             if (t.stanceGroup === 'canon') {
                 const nx = (W?.beats || []).find(b => live(b.text) && !b.broken);
                 if (nx) { t.beatNext = show(nx.text); if (t.beatsAll) t.beatsAll = t.beatsAll.filter(x => x !== t.beatNext); }
             }
-            t.beatsReady = Number(cfg.flowSceneGate ?? 1) === 0 ? [] : (sc.ready || []).filter(live).map(show);
+            t.beatsReady = Number(cfg.flowSceneGate ?? 1) === 0 ? [] : (sc.ready || []).filter(live).filter(own).map(show);
             t.beatsNear = stance === 'follow' ? (sc.near || []).filter(x => live(x) && !(sc.ready || []).includes(x)).map(show) : [];
             t.beatsBroken = stance === 'follow' ? (W?.beats || []).filter(b => b.broken && live(b.text)).map(b => b.text) : [];
             loreqa_stageSet({ guide: W ? `✓ 비트 ${t.beatsReady.length}개` : '✗' });
