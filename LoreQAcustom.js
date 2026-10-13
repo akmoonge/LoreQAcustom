@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.2
-//@version 3.9.2
+//@display-name 원작견 개조판 v3.9.3
+//@version 3.9.3
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.2';
+const LOREQA_VER = '3.9.3';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -8936,7 +8936,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
           if(end<=start||batch.reduce((n,m)=>n+m.text.length,0)>100000)throw Error('한 턴이 너무 길어 자동 추출을 중단했습니다. 고정 변경 기록으로 보완해 주세요.');
           if(await resync(end,'읽기 전'))continue outer;
           scoutLedgerStatus.set(scope,`중대 분기 확인 중: ${start}/${messages.length} 완료 · 인덱스 ${start}~${end-1} 읽기`);
-          scoutShow(scoutLedgerStatus.get(scope));
+          // 진행 문구는 분기 기록 창 상태줄에만 (브리핑 칸은 브리핑만 보여 준다)
           const payload={scope,work:loreqa_cfg.source,story_language:scoutStoryLanguage(batch),ledger:scoutLedgerProjection(ledger),manual_fixed:loreqa_cfg.scoutFactsByScope?.[scope]||'',...branchExtras,new_batch_start:start,messages:batch};
           try{events=await scoutLedgerExtractBatch(payload,batch,start,ledger,outputBudget);break;}
           catch(error){
@@ -8956,7 +8956,7 @@ async function scoutLedgerSyncWork(snap,maxBatches=2){return scoutLedgerSerial(a
         // 새 기록이 정해진 수만큼 쌓이면 장부를 정리한다. 실패해도 읽기는 계속.
         const every=Number(loreqa_cfg.ledgerTidyEvery)||0;
         if(every>0&&(ledger.sinceTidy||0)>=every){
-            scoutLedgerStatus.set(scope,`분기 장부 정리 중 (새 기록 ${ledger.sinceTidy}건)`);scoutShow(scoutLedgerStatus.get(scope));
+            scoutLedgerStatus.set(scope,`분기 장부 정리 중 (새 기록 ${ledger.sinceTidy}건)`);
             try{const r=await scoutLedgerTidyWork(ledger,scope,'auto',messages.slice(0,end));if(!r.skipped)await scoutLedgerSave(ledger);}
             catch(e){scoutLedgerLogAdd(scope,{time:new Date().toISOString(),phase:'tidy',status:'정리 실패 (읽기는 계속)',error:String(e.message||e)});ledger.sinceTidy=0;ledger.lastTidy={time:new Date().toISOString(),error:String(e.message||e).slice(0,200)};await scoutLedgerSave(ledger);}
         }
@@ -10231,7 +10231,7 @@ async function scoutLedgerExtractRequest(payload, batch, start, ledger, outputBu
             if (error.code !== 'SCOUT_LEDGER_JSON') { if (kept) return kept; throw error; }
             if (kept) return kept;
             if (attempt === 1) throw scoutLedgerJsonError('중대 분기 JSON 형식 오류: 자동 재시도 1회 후에도 실패하여 묶음을 줄입니다. ' + error.message);
-            scoutShow('중대 분기 응답 형식 오류: 동일한 대화 묶음으로 한 번만 다시 요청합니다.');
+            scoutLedgerStatus.set(payload.scope,'중대 분기 응답 형식 오류: 동일한 대화 묶음으로 한 번만 다시 요청합니다.');
             prompt.push({role:'user',content:'The previous attempt did not provide one valid JSON object with an events array. Re-extract only from the evidence above. Return exactly {"events":[...]} or {"events":[]} when the evidence establishes no eligible event. No Markdown fences, explanation, reasoning, or duplicate JSON objects. Never return an empty events array merely to suppress an error; retain all qualifying evidence-supported events. Follow the original schema and verbatim quote requirements.'});
         }
     }
