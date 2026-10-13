@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.7
-//@version 3.9.7
+//@display-name 원작견 개조판 v3.9.8
+//@version 3.9.8
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.7';
+const LOREQA_VER = '3.9.8';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -8291,7 +8291,7 @@ const SCOUT_JUMP_STANCE={
   change:'The player cares more about the story\'s own changes. TIME JUMP options are spread over story time (a day, several days, a couple of weeks) without waiting for original events, which pass off-screen meanwhile. STORY JUMP options may land in the middle of a later arc or after it, with that arc having played out off-screen and the world changed by it.',
   free:'The original is only a backdrop. TIME JUMP options are spread over story time (half a day to weeks) regardless of original events, which pass off-screen meanwhile. STORY JUMP options land after a later arc has played out off-screen, in the world it left behind, where she continues her own story.',
 };
-function scoutJumpRule(){const k=Number(loreqa_cfg.compGuide)===0?'balance':loreqa_stance();return '\nJUMP OPTIONS FOR THIS STORY: '+(SCOUT_JUMP_STANCE[k]||SCOUT_JUMP_STANCE.balance)+' Story jumps always step one later arc or major turning point at a time, never a fixed multiple of the time jumps.'+` Start every TIME JUMP and STORY JUMP option with where it falls in the original, in the same medium and unit as canon_position (${({novel:'novel volume / chapter',manga:'manga volume / chapter',webnovel:'web novel chapter',anime:'anime episode',drama:'drama episode',game:'game chapter / quest'})[loreqa_cfg.canonMedium]||'the unit canon_position uses'}), e.g. "(Vol.21, Ch.201)", "(Ep.120)", "(Book 3, Ch.12)"; add "~" when approximate, and "(own thread)" for the player character's own threads. Never give a number you cannot tie to the original.`;}
+function scoutJumpRule(){const k=Number(loreqa_cfg.compGuide)===0?'balance':loreqa_stance();return '\nJUMP OPTIONS FOR THIS STORY: '+(SCOUT_JUMP_STANCE[k]||SCOUT_JUMP_STANCE.balance)+' Story jumps always step one later arc or major turning point at a time, never a fixed multiple of the time jumps.'+` Start every TIME JUMP and STORY JUMP option with where it falls in the original, in the same medium and unit as canon_position (${({novel:'novel volume / chapter',manga:'manga volume / chapter',webnovel:'web novel chapter',anime:'anime episode',drama:'drama episode',game:'game chapter / quest'})[loreqa_cfg.canonMedium]||'the unit canon_position uses'}), e.g. "(Vol.21, Ch.201)", "(Ep.120)", "(Book 3, Ch.12)"; add "~" when approximate, and "(own thread)" for the player character's own threads. Never give a number you cannot tie to the original.`+` HOW LONG LATER: never guess durations from chapter gaps. Work them out from the original's own in-world calendar: the season, month, school term, festival, moon phase, age or stated number of days at canon_position and at the target event, from the original itself or a timeline you retrieved, and keep the whole original's total span in mind (a target cannot lie further away than the story's remaining time). When the story itself shows a date (a status panel or card calendar), count from that date. If the original gives no time marker for an event, write "[time unclear]" instead of a number.`;}
 function scoutRule(){
     const lang=scoutBriefLang();
     if(SCOUT_KOREAN_RE.test(lang))return SCOUT_RULE_BASE;
