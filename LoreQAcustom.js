@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.3
-//@version 3.9.3
+//@display-name 원작견 개조판 v3.9.4
+//@version 3.9.4
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.3';
+const LOREQA_VER = '3.9.4';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -8261,7 +8261,9 @@ Return these six sections, short and specific:
 3. 다음 원작 전개: 2-4 chronological events in the unchanged baseline, NOT inevitable outcomes.
 4. 내 행적으로 달라진 점: action -> direct established change -> conditional downstream effects; distinguish confirmed from inferred.
 5. 기억·인지 점검: relevant shared past, knowledge owners, omissions/conflicts. No invented dialogue or detailed scene plan.
-6. After the five sections, write the line [TIME JUMP OPTIONS] and then up to 5 time-jump options for the player, soonest first, from a few hours to weeks later, one line each. Use the original's timeline as the backbone: 3-4 options are original events from upcoming_original_events, written "[how long later] original event · where · who — to get involved: how the player character, from where she is now, could be there or be drawn in (travel, news, a request, someone coming to her)". Add 1-2 options for the player character's own threads from the ledger (a promise coming due, an item being finished, a goal she is pursuing), written "[how long later] (her name's own) what comes due — meanwhile off-screen: original events that would pass without her". Base them on canon_position, upcoming_original_events, passed_offscreen and the ledger's player-character records. They are choices shown to the player, not decisions: never pick one, never write the scene.
+6. After the five sections, write two option lists for the player. They are choices shown to the player, not decisions: never pick one, never write the scene. Base them on canon_position, upcoming_original_events, passed_offscreen and the ledger's player-character records; for anything beyond upcoming_original_events, use the original's own chapter / arc order from what you know or retrieved.
+[TIME JUMP OPTIONS] then 3-5 short jumps, soonest first, spread over different spans: at least one within the same day, one a few days later and one one to two weeks later. Original events that happen minutes or hours apart count as one option ("the same day"). Write "[how long later] original event · where · who — to get involved: how the player character, from where she is now, could be there or be drawn in (travel, news, a request, someone coming to her)". One or two may be the player character's own threads from the ledger (a promise coming due, an item being finished, a goal she is pursuing), written "[how long later] (her name's own) what comes due — meanwhile off-screen: original events that would pass without her".
+[STORY JUMP OPTIONS] then 3-4 big steps, one per later arc or major turning point of the original, each weeks to months or more later and each further than the last: "[roughly how long later] the arc or major event to land in · where the main characters are then — passes off-screen meanwhile: the key original events skipped — where the player character would stand: what her ledger state (party, promises, relationships) makes likely". Never repeat a TIME JUMP option.
 If no evidence, say 확인 불가. A forecast never counts as an event. Cite only real sources actually supplied/retrieved, never fabricated chapter numbers or URLs. Keep within roughly 1500 Korean characters unless essential.`;
 const SCOUT_KOREAN_RE=/^\s*(한국어|한글|korean|ko|ko-kr)\s*$/i;
 function scoutLang(){return String(loreqa_cfg.language||'').trim()||'한국어';}
@@ -8273,7 +8275,7 @@ function scoutRule(){
     if(SCOUT_KOREAN_RE.test(lang))return SCOUT_RULE_BASE;
     return SCOUT_RULE_BASE
       .replace('Write concise Korean. The story and sources may be in another language: still write the whole briefing in this language, keeping names as they are written.',`Write concise ${lang}. Every heading and all content must be in ${lang}, even when the story and sources are in another language; keep names as they are written.`)
-      .replace('Return these six sections, short and specific:',`Return these six sections, short and specific. Translate the numbered section heading labels (1-5) below into ${lang}, but keep the literal marker [TIME JUMP OPTIONS] in section 6 exactly as written:`)
+      .replace('Return these six sections, short and specific:',`Return these six sections, short and specific. Translate the numbered section heading labels (1-5) below into ${lang}, but keep the literal markers [TIME JUMP OPTIONS] and [STORY JUMP OPTIONS] in section 6 exactly as written:`)
       .replace('If no evidence, say 확인 불가.',`If no evidence, state "unverifiable" in ${lang}.`)
       .replace('Keep within roughly 1500 Korean characters unless essential.',`Keep within roughly 1500 characters (or about 500 words) unless essential. Output in ${lang} only.`);
 }
@@ -8549,16 +8551,19 @@ async function scoutRun(force=false) {
         if(!result?.text)throw new Error(loreqa_state.lastError||'사전 정보 조회에 실패했습니다.');
         let report=result.text;
         // 타임 점프 후보는 사용자에게만 보여 준다: 2차 검토 · 메인 참고(reference)에 들어가지 않게 떼어 둔다
-        let jumps='';{const i=report.search(/\[TIME JUMP OPTIONS\]/i);if(i>=0){jumps=report.slice(i).replace(/^\[TIME JUMP OPTIONS\]\s*/i,'').trim();report=report.slice(0,i).trim();}}
+        // 점프 후보(가까운 타임 점프 · 큰 스토리 점프)는 화면에만: 2차 검토 · 메인 참고에 들어가지 않게 떼어 둔다
+        let jumps='',sjumps='';{const i=report.search(/\[(TIME|STORY) JUMP OPTIONS\]/i);if(i>=0){const tail=report.slice(i);report=report.slice(0,i).trim();
+          const k=tail.search(/\[STORY JUMP OPTIONS\]/i);const tj=k>=0?tail.slice(0,k):tail,sj=k>=0?tail.slice(k):'';
+          const tidyJ=x=>x.replace(/(^|\n)\s*#+\s*(?=\n|$)/g,'$1').trim();jumps=tidyJ(tj.replace(/^\[TIME JUMP OPTIONS\]\s*/i,''));sjumps=tidyJ(sj.replace(/^\[STORY JUMP OPTIONS\]\s*/i,''));}}
         if(loreqa_cfg.lore>=2&&!(loreqa_pipelineMode()===2&&Number(loreqa_cfg.scoutSkipAuditInBoth)===1)){
           const verify=loreqa_getVerifyProfile();
           const checked=await loreqa_callLLM([{role:'system',content:scoutRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY+' Audit the draft against evidence: do not restore canon deaths after successful rescues, erase childhood relations, or turn forecasts into facts. Return the corrected five-section briefing only.'},{role:'user',content:JSON.stringify({evidence,draft:report})}],!!loreqa_cfg.verifySearch,verify.type,verify.profile,false,false,{silent:true,step:'원작 브리핑 검토'});
-          report=checked?.text?checked.text.replace(/\[TIME JUMP OPTIONS\][\s\S]*$/i,'').trim():report+'\n\n※ 2차 검토 실패: 1차 결과입니다.';
+          report=checked?.text?checked.text.replace(/\[(TIME|STORY) JUMP OPTIONS\][\s\S]*$/i,'').trim():report+'\n\n※ 2차 검토 실패: 1차 결과입니다.';
         }
         if((await scoutSnapshot()).key!==snap.key){scoutShow('조회 중 채팅 또는 설정이 바뀌어 결과를 폐기했습니다. 다시 조회해 주세요.');return;}
         const pending=ledger.hashes.length<scoutCompleted(snap).length;
         const ledgerNotice=pending?'※ 중대 분기 기록은 일부 미완료입니다. 일반 조회는 저장된 기록과 제공된 대화로 진행했습니다. 중대 분기 기록에서 이어서 읽기를 시도할 수 있습니다.\n\n':'';
-        const display='[원작 사전정보 · 메인 모델 참고용 / 전개 강제·인물 지식 자동 부여 없음]\n\n'+ledgerNotice+report+(jumps?'\n\n### '+(loreqa_isKO(scoutBriefLang())?'타임 점프 후보 (선택지 · 주입 안 됨)':'Time jump options (choices, not injected)')+'\n'+jumps:'');
+        const display='[원작 사전정보 · 메인 모델 참고용 / 전개 강제·인물 지식 자동 부여 없음]\n\n'+ledgerNotice+report+(jumps?'\n\n### '+(loreqa_isKO(scoutBriefLang())?'타임 점프 후보 (가까운 시간 · 선택지 · 주입 안 됨)':'Time jump options (near, choices, not injected)')+'\n'+jumps:'')+(sjumps?'\n\n### '+(loreqa_isKO(scoutBriefLang())?'스토리 점프 후보 (다음 아크 · 큰 걸음 · 주입 안 됨)':'Story jump options (later arcs, big steps, not injected)')+'\n'+sjumps:'');
         scoutCache={key:snap.key,extraKey,text:display,reference:report};scoutShow(display);scoutReportScope=snap.scope;
         // 마지막 브리핑은 채팅마다 위치 저장소에 남긴다 (전에는 메모리에만 있어 앱을 끄면 사라졌다)
         try{const st=await loreqa_posLoad(snap.scope);st.brief={text:display,time:new Date().toISOString()};await loreqa_posSave(snap.scope,st);}catch(_){}
