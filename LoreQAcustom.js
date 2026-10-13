@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.4
-//@version 3.9.4
+//@display-name 원작견 개조판 v3.9.5
+//@version 3.9.5
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.4';
+const LOREQA_VER = '3.9.5';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -6280,11 +6280,24 @@ async function loreqa_getChatMessages() {
     return [];
 }
 
+// 지금 채팅의 페르소나: 채팅에 묶어 둔 페르소나(Risu 의 chat.bindedPersona = 페르소나 id)가 있으면 그것, 없으면 전역 선택
+//   (전에는 전역 선택만 읽어, 채팅마다 페르소나를 묶어 둔 사용자는 다른 채팅의 페르소나가 들어갔다)
+async function loreqa_currentPersona(db) {
+    const list = Array.isArray(db?.personas) ? db.personas : [];
+    try {
+        const ch = await risuai.getCharacter();
+        const chat = ch?.chats?.[Number(ch.chatPage) || 0];
+        const bound = chat?.bindedPersona;
+        if (bound) { const i = list.findIndex(p => p && (p.id === bound || p.name === bound)); if (i >= 0) return { persona: list[i], index: i, bound: true }; }
+    } catch (e) {}
+    const idx = Number(db?.selectedPersona) || 0;
+    return { persona: list[idx], index: idx, bound: false };
+}
 async function loreqa_getPersonaName() {
     // 설명 읽기와 같은 키만 먼저 요청한다 (DB 전체 요청은 막혀 있을 수 있어 이름이 '{{user}}' 그대로 넘어가던 문제)
     try {
         const db = await risuai.getDatabase(['personas', 'selectedPersona']);
-        const persona = db?.personas?.[Number(db.selectedPersona) || 0];
+        const { persona } = await loreqa_currentPersona(db);
         if (persona?.name) return persona.name;
     } catch (e) {}
     try {
@@ -6308,10 +6321,10 @@ async function loreqa_getPersonaDescription() {
     try {
         const db = await risuai.getDatabase(['personas', 'selectedPersona']);
         if (!db) { loreqa_personaLast = { ok: false, reason: 'Risu DB 접근 권한이 없음 (플러그인 권한 허락 필요)' }; return ''; }
-        const idx = Number(db.selectedPersona) || 0, persona = db.personas?.[idx];
+        const { persona, index: idx, bound } = await loreqa_currentPersona(db);
         // Risu 본체는 페르소나 안의 {{user}} 를 CBS 로 바꾸지만 플러그인은 원문을 받는다: 이름이 있으면 그 자리에 넣는다
         const text = String(persona?.personaPrompt || db.personaPrompt || '').replace(/\{\{\s*user\s*\}\}/gi, m => persona?.name || m);
-        loreqa_personaLast = text ? { ok: true, name: persona?.name || '', index: idx, len: text.length, head: text.slice(0, 160) }
+        loreqa_personaLast = text ? { ok: true, name: persona?.name || '', index: idx, bound, len: text.length, head: text.slice(0, 160) }
             : { ok: false, reason: persona ? `선택된 페르소나(${persona.name || (idx + 1) + '번'})의 설명이 비어 있음` : '선택된 페르소나를 찾지 못함' };
         return text;
     } catch (e) { loreqa_personaLast = { ok: false, reason: '읽기 실패: ' + (e?.message || e) }; }
@@ -6321,7 +6334,7 @@ async function loreqa_getPersonaDescription() {
 async function loreqa_personaCheckText() {
     const name = await loreqa_getPersonaName(), text = await loreqa_getPersonaDescription(), p = loreqa_personaLast, cap = loreqa_lim('attachChars');
     if (!p.ok) return '✗ 페르소나를 읽지 못했습니다: ' + p.reason;
-    return `✓ 읽힘: ${p.name || name} · ${p.len.toLocaleString()}자${cap && p.len > cap ? ` (첨부 글자 수 ${cap.toLocaleString()}자에서 잘림 — 뒷부분은 보조 모델에 안 감. 기본·프리셋 탭에서 바꿈)` : ''}\n앞부분: ${p.head}${text.length > 160 ? '…' : ''}\n※ 채팅마다 다른 페르소나를 묶어 쓰면 여기 보이는 것과 실제 대화의 페르소나가 다를 수 있습니다.`;
+    return `✓ 읽힘: ${p.name || name} (${p.bound ? '이 채팅에 묶인 페르소나' : '전역 선택 페르소나'}) · ${p.len.toLocaleString()}자${cap && p.len > cap ? ` (첨부 글자 수 ${cap.toLocaleString()}자에서 잘림 — 뒷부분은 보조 모델에 안 감. 기본·프리셋 탭에서 바꿈)` : ''}\n앞부분: ${p.head}${text.length > 160 ? '…' : ''}\n※ 채팅마다 다른 페르소나를 묶어 쓰면 여기 보이는 것과 실제 대화의 페르소나가 다를 수 있습니다.`;
 }
 
 // RisuAI 작가의 노트 조회
