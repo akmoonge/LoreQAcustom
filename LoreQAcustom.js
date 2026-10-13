@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.5
-//@version 3.9.5
+//@display-name 원작견 개조판 v3.9.6
+//@version 3.9.6
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.5';
+const LOREQA_VER = '3.9.6';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -8275,7 +8275,7 @@ Return these six sections, short and specific:
 4. 내 행적으로 달라진 점: action -> direct established change -> conditional downstream effects; distinguish confirmed from inferred.
 5. 기억·인지 점검: relevant shared past, knowledge owners, omissions/conflicts. No invented dialogue or detailed scene plan.
 6. After the five sections, write two option lists for the player. They are choices shown to the player, not decisions: never pick one, never write the scene. Base them on canon_position, upcoming_original_events, passed_offscreen and the ledger's player-character records; for anything beyond upcoming_original_events, use the original's own chapter / arc order from what you know or retrieved.
-[TIME JUMP OPTIONS] then 3-5 short jumps, soonest first, spread over different spans: at least one within the same day, one a few days later and one one to two weeks later. Original events that happen minutes or hours apart count as one option ("the same day"). Write "[how long later] original event · where · who — to get involved: how the player character, from where she is now, could be there or be drawn in (travel, news, a request, someone coming to her)". One or two may be the player character's own threads from the ledger (a promise coming due, an item being finished, a goal she is pursuing), written "[how long later] (her name's own) what comes due — meanwhile off-screen: original events that would pass without her".
+[TIME JUMP OPTIONS] then 3-5 short jumps, soonest first, spread over different spans as the jump rule for this story below says. Original events that happen minutes or hours apart count as one option ("the same day"). Write "[how long later] original event · where · who — to get involved: how the player character, from where she is now, could be there or be drawn in (travel, news, a request, someone coming to her)". One or two may be the player character's own threads from the ledger (a promise coming due, an item being finished, a goal she is pursuing), written "[how long later] (her name's own) what comes due — meanwhile off-screen: original events that would pass without her".
 [STORY JUMP OPTIONS] then 3-4 big steps, one per later arc or major turning point of the original, each weeks to months or more later and each further than the last: "[roughly how long later] the arc or major event to land in · where the main characters are then — passes off-screen meanwhile: the key original events skipped — where the player character would stand: what her ledger state (party, promises, relationships) makes likely". Never repeat a TIME JUMP option.
 If no evidence, say 확인 불가. A forecast never counts as an event. Cite only real sources actually supplied/retrieved, never fabricated chapter numbers or URLs. Keep within roughly 1500 Korean characters unless essential.`;
 const SCOUT_KOREAN_RE=/^\s*(한국어|한글|korean|ko|ko-kr)\s*$/i;
@@ -8283,6 +8283,15 @@ function scoutLang(){return String(loreqa_cfg.language||'').trim()||'한국어';
 // 원작 브리핑 언어: 사용자가 읽는 칸이라 출력 언어(이야기 언어로 맞춰 두는 경우가 많음)와 따로 고른다
 function scoutBriefLang(){const v=String(loreqa_cfg.briefLang??'한국어').trim();return v==='output'?scoutLang():(v||'한국어');}
 // 한국어면 원래 프롬프트를 그대로 쓰고, 그 외 언어면 출력 지시만 바꾼다.
+// 점프 후보의 원작 흐름별 규칙: 타임 점프는 간격이, 스토리 점프는 착지 위치가 달라진다 (스토리 점프의 거리는 늘 다음 아크 단위)
+const SCOUT_JUMP_STANCE={
+  follow:'The player wants to live through the original events. TIME JUMP options never skip an original event: each lands before the next upcoming original event, the last one just before it. STORY JUMP options land just before each later arc begins, with its people about to gather, so she can take part from the start.',
+  canon:'The player mostly follows the original. TIME JUMP options are close together and land before the next upcoming original event or at its start. STORY JUMP options land at the start of each later arc.',
+  balance:'TIME JUMP options are spread over the same day, a few days and one to two weeks; original events that fall inside a jump pass off-screen and are named as "meanwhile". STORY JUMP options land at the start or early part of each later arc.',
+  change:'The player cares more about the story\'s own changes. TIME JUMP options are spread over story time (a day, several days, a couple of weeks) without waiting for original events, which pass off-screen meanwhile. STORY JUMP options may land in the middle of a later arc or after it, with that arc having played out off-screen and the world changed by it.',
+  free:'The original is only a backdrop. TIME JUMP options are spread over story time (half a day to weeks) regardless of original events, which pass off-screen meanwhile. STORY JUMP options land after a later arc has played out off-screen, in the world it left behind, where she continues her own story.',
+};
+function scoutJumpRule(){const k=Number(loreqa_cfg.compGuide)===0?'balance':loreqa_stance();return '\nJUMP OPTIONS FOR THIS STORY: '+(SCOUT_JUMP_STANCE[k]||SCOUT_JUMP_STANCE.balance)+' Story jumps always step one later arc or major turning point at a time, never a fixed multiple of the time jumps.';}
 function scoutRule(){
     const lang=scoutBriefLang();
     if(SCOUT_KOREAN_RE.test(lang))return SCOUT_RULE_BASE;
@@ -8559,7 +8568,7 @@ async function scoutRun(force=false) {
             if(b?.world){evidence.cut=b.world.now||'';evidence.upcoming_original_events=(b.world.beats||[]).filter(x=>!(b.played||[]).includes(x.text)).map(x=>x.text);}
             if(st.offscreen?.length)evidence.passed_offscreen=st.offscreen.slice(-6).map(o=>o.text);}catch(_){}
         const ocRule=extras.original?scoutOcRule(extras.personaName):'';
-        const prompt=[{role:'system',content:scoutRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY},{role:'user',content:JSON.stringify(evidence)}];
+        const prompt=[{role:'system',content:scoutRule()+scoutJumpRule()+ocRule+'\n'+SCOUT_LEDGER_POLICY},{role:'user',content:JSON.stringify(evidence)}];
         const result=await loreqa_callLLM(prompt,!!loreqa_cfg.search,null,null,false,false,{silent:true,step:'원작 브리핑'});
         if(!result?.text)throw new Error(loreqa_state.lastError||'사전 정보 조회에 실패했습니다.');
         let report=result.text;
