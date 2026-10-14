@@ -1,11 +1,11 @@
 //@name LoreQAcustom
-//@display-name 원작견 개조판 v3.9.8
-//@version 3.9.8
+//@display-name 원작견 개조판 v3.9.9
+//@version 3.9.9
 //@api 3.0
 //@update-url https://raw.githubusercontent.com/akmoonge/LoreQAcustom/main/LoreQAcustom.js
 
 // 설치된 버전 확인용 (콘솔 · 설정창). 맨 위 //@version 과 항상 같게 올린다
-const LOREQA_VER = '3.9.8';
+const LOREQA_VER = '3.9.9';
 
 if (typeof risuai === "undefined") {
     throw new Error("[LoreQA] RisuAI Plugin API 3.0 required");
@@ -5383,13 +5383,17 @@ async function loreqa_floatDragSetup(doc, el) {
         loreqa_saveConfig();
     };
     await el.addEventListener('pointerdown', async ev => {
+        // 지난 끌기가 놓기 신호를 못 받고 남아 있으면 먼저 끝낸다 (남은 리스너 때문에 아무 데나 끌어도 창이 따라왔다)
+        if (drag) await end();
         const p = xyOf(ev); if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
         const stack = await el.querySelector('div'); if (!stack) return;
         const r = await stack.getBoundingClientRect();
-        drag = { sx: p.x, sy: p.y, x: r.left, y: r.top };
+        // 누른 곳이 카드 묶음 안일 때만 끈다 (본 화면 연결이 바깥 클릭까지 넘겨주는 경우가 있다)
+        if (!(p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom)) return;
+        drag = { sx: p.x, sy: p.y, x: r.left, y: r.top, t: Date.now() };
         moveId = await body.addEventListener('pointermove', mv => {
             if (!drag) return;
-            if (mv?.buttons === 0) { end(); return; }
+            if (mv?.buttons === 0 || (mv?.buttons == null && Date.now() - drag.t > 15000)) { end(); return; }
             const q = xyOf(mv); if (!Number.isFinite(q.x)) return;
             loreqa_cfg.floatPos = 'custom';
             loreqa_cfg.floatXY = { x: drag.x + q.x - drag.sx, y: drag.y + q.y - drag.sy };
